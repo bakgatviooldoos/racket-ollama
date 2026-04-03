@@ -20,9 +20,10 @@
  ollama-client?
  ollama-start-chat)
 
-(define timeouts
-  (make-timeout-config
-   #:request (* 5 60)))
+(define ollama-timeouts
+  (make-parameter
+   (make-timeout-config
+    #:request (* 5 60))))
 
 (struct ollama-client (auth session ~endpoint))
 
@@ -73,7 +74,7 @@
                  'raw raw?
                  'keep_alive keep-alive
                  'format (.? output-format ->jsexpr))
-         #:timeouts timeouts
+         #:timeouts (ollama-timeouts)
          session (~endpoint "api" "generate"))
         (check-response 'ollama-generate _)))
   (let ([done? #f]
@@ -124,7 +125,7 @@
                    'messages (->jsexpr messages)
                    'tools (.? tools hash-values->jsexpr)
                    'format (.? output-format ->jsexpr))
-           #:timeouts timeouts
+           #:timeouts (ollama-timeouts)
            session (~endpoint "api" "chat"))
           (check-response 'ollama-chat _)))
     (let ([messages (treelist-copy messages)])
@@ -172,7 +173,7 @@
                'truncate truncate?
                'options options
                'keep_alive keep-alive)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "embed"))
       (check-response 'ollama-embed _)
       (response-json)))
@@ -183,7 +184,7 @@
   (~> (session-request
        #:method 'get
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "tags"))
       (check-response 'ollama-list-models _)
       (response-json)))
@@ -193,7 +194,7 @@
   (~> (session-request
        #:method 'get
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "ps"))
       (check-response 'ollama-list-running _)
       (response-json)))
@@ -216,7 +217,7 @@
        #:json (hasheq
                'model model
                'verbose verbose?)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "show"))
       (check-response 'ollama-show-model _)
       (response-json)))
@@ -251,7 +252,7 @@
                  'parameters parameters
                  'messages (.? messages ->jsexpr)
                  'quantize (.? quantize ->jsexpr))
-         #:timeouts timeouts
+         #:timeouts (ollama-timeouts)
          session (~endpoint "api" "create"))
         (check-response 'ollama-create-model _)
         (stream-when stream?))))
@@ -264,7 +265,7 @@
        #:json (hasheq
                'source model
                'destination destination)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "copy"))
       (check-response 'ollama-copy-model _)
       (void)))
@@ -282,7 +283,7 @@
                'model model
                'insecure insecure?
                'stream stream?)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "pull"))
       (check-response 'ollama-pull-model _)
       (stream-when stream?)))
@@ -300,7 +301,7 @@
                'model model
                'insecure insecure?
                'stream stream?)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "push"))
       (check-response 'ollama-push-model _)
       (stream-when stream?)))
@@ -311,7 +312,7 @@
        #:method 'delete
        #:auth auth
        #:json (hasheq 'model model)
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "delete"))
       (check-response 'ollama-delete-model _)
       (void)))
@@ -322,7 +323,7 @@
   (~> (session-request
        #:method 'get
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "version"))
       (check-response 'ollama-version _)
       (response-json)))
@@ -333,7 +334,7 @@
   (~> (session-request
        #:method 'head
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint))
       (check-response 'ollama-online? _)
       (and #t)))
@@ -343,7 +344,7 @@
   (~> (session-request
        #:method 'get
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint))
       (check-response 'ollama-status _)
       (response-body)
@@ -355,7 +356,7 @@
   (~> (session-request
        #:method 'head
        #:auth auth
-       #:timeouts timeouts
+       #:timeouts (ollama-timeouts)
        session (~endpoint "api" "blobs" (format "sha256:~a" sha256)))
       (check-response 'ollama-has-blob? _ '(200 404))
       (response-status-code)
@@ -370,7 +371,7 @@
          #:method 'post
          #:auth auth
          #:data (->port data)
-         #:timeouts timeouts
+         #:timeouts (ollama-timeouts)
          session (~endpoint "api" "blobs" (format "sha256:~a" sha256)))
         (check-response 'ollama-upload-blob _ '(201))
         (and sha256))))
