@@ -18,7 +18,25 @@
 (provide
  make-ollama-client
  ollama-client?
- ollama-start-chat)
+ ollama-timeouts
+ ollama-generate
+ ollama-load-model
+ ollama-unload-model
+ ollama-start-chat
+ ollama-list-models
+ ollama-list-running
+ ollama-show-model
+ ollama-copy-model
+ ollama-delete-model
+ ollama-pull-model
+ ollama-push-model
+ ollama-create-model
+ ollama-has-blob?
+ ollama-upload-blob
+ ollama-embed
+ ollama-version
+ ollama-online?
+ ollama-status)
 
 (define ollama-timeouts
   (make-parameter
