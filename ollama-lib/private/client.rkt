@@ -8,6 +8,7 @@
          racket/treelist
          struct-define
          threading
+         "json.rkt"
          "lens.rkt"
          "message.rkt"
          "tool.rkt")
@@ -33,6 +34,28 @@
    #;~endpoint (lambda args
                  (format "~a/~a" root (string-join args "/")))))
 
+;; GENERATE
+(define (ollama-generate
+         #:suffix [suffix (json-null)]
+         #:images [images (json-null)]
+         #:format [output-format (json-null)]
+         #:system [system-prompt (json-null)]
+         #:think? [think? (json-null)]
+         #:raw? [raw? (json-null)]
+         #:keep-alive [keep-alive (json-null)]
+         #:options [options (json-null)]
+         #:response->message
+         [response->message
+          (lambda (data)
+            (make-message
+             #:role 'assistant
+             (&content data)))]
+         #:message-callback
+         [message-callback void]
+         c model [user-prompt #f])
+  #f)
+
+;; CHAT
 (define (ollama-start-chat
          #:options [options (hasheq)]
          #:format [output-format #f]
@@ -95,6 +118,85 @@
              (mutable-treelist-append! messages (ensure-messages next-message))
              (mutable-treelist-add! messages (ensure-message next-message)))
          (loop (mutable-treelist-snapshot messages) output-format tools))))))
+
+;; EMBEDDINGS
+(define (ollama-embed
+         #:truncate? [truncate? (json-null)]
+         #:dimensions [dimensions (json-null)]
+         #:options [options (json-null)]
+         #:keep-alive [keep-alive (json-null)]
+         c model input)
+  #f)
+
+;; MODELS
+(define (ollama-list-models c)
+  #f)
+
+(define (ollama-list-running c)
+  #f)
+
+(define (ollama-load-model client model)
+  #f)
+
+(define (ollama-unload-model client model)
+  #f)
+
+(define (ollama-show-model
+         #:verbose? [verbose? #f]
+         c model)
+  #f)
+
+(define (ollama-create-model
+         #:from [from (json-null)]
+         #:files [files (json-null)]
+         #:adapters [adapters (json-null)]
+         #:template [template (json-null)]
+         #:license [license (json-null)]
+         #:system [system (json-null)]
+         #:parameters [parameters (json-null)]
+         #:messages [messages (json-null)]
+         #:stream? [stream? #t]
+         #:quantize [quantize (json-null)]
+         c model)
+  #f)
+
+(define (ollama-copy-model c model destination)
+  #f)
+
+(define (ollama-pull-model
+         #:insecure? [insecure? #f]
+         #:stream? [stream? #t]
+         c model)
+  #f)
+
+(define (ollama-push-model
+         #:insecure? [insecure? #f]
+         #:stream? [stream? #t]
+         c model)
+  #f)
+
+(define (ollama-delete-model c model)
+  #f)
+
+;; VERSION
+(define (ollama-version c)
+  #f)
+
+;; STATUS (UNDOCUMENTED)
+(define (ollama-online? c)
+  #f)
+
+(define (ollama-status c)
+  #f)
+
+;; BLOBS
+(define (ollama-has-blob? c sha256)
+  #f)
+
+(define (ollama-upload-blob
+         #:sha256 [sha256 #f]
+         c data)
+  #f)
 
 (define (ensure-messages str-or-messages)
   (cond
