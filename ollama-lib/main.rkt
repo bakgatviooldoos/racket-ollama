@@ -38,6 +38,7 @@
    (->* [ollama-client? string? chat-message*/c]
         [#:options (or-json-null/c jsexpr-hash/c)
          #:format (or-json-null/c 'json jsexpr?)
+         #:think? (or-json-null/c boolean? 'low 'medium 'high)
          #:tools (or-json-null/c (hash/c symbol? tool-info?))
          #:response->history-entry (-> jsexpr? (or/c #f message?))]
         (values

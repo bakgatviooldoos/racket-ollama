@@ -104,7 +104,7 @@
          (unless done?
            (set! done? #t)
            (define complete-message
-             (message-parts->complete-message parts))
+             (message-parts->complete-message parts #:chat? #f #:think? think?))
            (unless (string=? (&content complete-message) "")
              (message-callback (response->message complete-message))))
          (begin0 eof
@@ -117,6 +117,7 @@
 (define (ollama-start-chat
          #:options [options (json-null)]
          #:format [output-format (json-null)]
+         #:think? [think? (json-null)]
          #:tools [tools (json-null)]
          #:response->history-entry
          [response->history-entry
@@ -141,6 +142,7 @@
                    'stream #t
                    'options options
                    'messages (->jsexpr messages)
+                   'think (.? think? ->jsexpr)
                    'tools (.? tools hash-values->jsexpr)
                    'format (.? output-format ->jsexpr))
            #:timeouts (ollama-timeouts)
@@ -155,7 +157,7 @@
             (unless done?
               (set! done? #t)
               (define complete-message
-                (message-parts->complete-message parts))
+                (message-parts->complete-message parts #:think? think?))
               (unless (string=? (&content complete-message) "")
                 (and~>
                  (response->history-entry complete-message)
