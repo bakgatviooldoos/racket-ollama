@@ -59,7 +59,7 @@
          #:images [images (json-null)]
          #:format [output-format (json-null)]
          #:system [system-prompt (json-null)]
-         #:think? [think? (json-null)]
+         #:think [think (json-null)]
          #:raw? [raw? (json-null)]
          #:keep-alive [keep-alive (json-null)]
          #:options [options (json-null)]
@@ -86,7 +86,7 @@
                  'images images
                  'system system-prompt
                  'options options
-                 'think (.? think? ->jsexpr)
+                 'think (.? think ->jsexpr)
                  'raw raw?
                  'keep_alive keep-alive
                  'format (.? output-format ->jsexpr))
@@ -102,7 +102,7 @@
          (unless done?
            (set! done? #t)
            (define complete-message
-             (message-parts->complete-message parts #:chat? #f #:think? think?))
+             (message-parts->complete-message parts #:chat? #f #:think? (?? think #f)))
            (unless (string=? (&content complete-message) "")
              (message-callback (response->message complete-message))))
          (begin0 eof
@@ -115,7 +115,7 @@
 (define (ollama-start-chat
          #:options [options (json-null)]
          #:format [output-format (json-null)]
-         #:think? [think? (json-null)]
+         #:think [think (json-null)]
          #:tools [tools (json-null)]
          #:response->history-entry
          [response->history-entry
@@ -140,7 +140,7 @@
                    'stream #t
                    'options options
                    'messages (->jsexpr messages)
-                   'think (.? think? ->jsexpr)
+                   'think (.? think ->jsexpr)
                    'tools (.? tools hash-values->jsexpr)
                    'format (.? output-format ->jsexpr))
            #:timeouts (ollama-timeouts)
@@ -155,7 +155,7 @@
             (unless done?
               (set! done? #t)
               (define complete-message
-                (message-parts->complete-message parts #:think? think?))
+                (message-parts->complete-message parts #:think? (?? think #f)))
               (unless (string=? (&content complete-message) "")
                 (and~>
                  (response->history-entry complete-message)
