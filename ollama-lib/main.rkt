@@ -4,6 +4,7 @@
          net/http-easy
          racket/contract/base
          "private/client.rkt"
+         "private/json.rkt"
          "private/json-schema.rkt"
          "private/message.rkt"
          "private/sha.rkt"
@@ -145,7 +146,7 @@
   (hash/c symbol? jsexpr?))
 
 (define (or-json-null/c . cs)
-  (apply or/c (json-null) cs))
+  (apply or/c json-null? cs))
 
 (define file->blob/c
   (hash/c symbol? sha256-string?))
