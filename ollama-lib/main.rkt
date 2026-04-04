@@ -33,7 +33,7 @@
          #:options (or-json-null/c jsexpr-hash/c)
          #:response->message (-> jsexpr? (or/c #f message?))
          #:message-callback (-> message? void?)
-         (or/c #f string?)]
+         (or-json-null/c string?)]
         chat-response/c)]
   [ollama-start-chat
    (->* [ollama-client? string? chat-message*/c]

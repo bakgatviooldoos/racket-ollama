@@ -34,9 +34,7 @@
  ollama-has-blob?
  ollama-upload-blob
  ollama-embed
- ollama-version
- ollama-online?
- ollama-status)
+ ollama-version)
 
 (define ollama-timeouts
   (make-parameter
@@ -73,7 +71,7 @@
              (&content data)))]
          #:message-callback
          [message-callback void]
-         c model [user-prompt #f])
+         c model [user-prompt (json-null)])
   (struct-define ollama-client c)
   (define resp
     (~> (session-request
@@ -347,28 +345,6 @@
        session (~endpoint "api" "version"))
       (check-response 'ollama-version _)
       (response-json)))
-
-;; STATUS (UNDOCUMENTED)
-(define (ollama-online? c)
-  (struct-define ollama-client c)
-  (~> (session-request
-       #:method 'head
-       #:auth auth
-       #:timeouts (ollama-timeouts)
-       session (~endpoint))
-      (check-response 'ollama-online? _)
-      (and #t)))
-
-(define (ollama-status c)
-  (struct-define ollama-client c)
-  (~> (session-request
-       #:method 'get
-       #:auth auth
-       #:timeouts (ollama-timeouts)
-       session (~endpoint))
-      (check-response 'ollama-status _)
-      (response-body)
-      (bytes->string/utf-8)))
 
 ;; FILE-BLOBS
 (define (ollama-has-blob? c sha256)
