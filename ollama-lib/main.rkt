@@ -28,7 +28,7 @@
          #:format (or-json-null/c 'json jsexpr?)
          #:system (or-json-null/c string?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
-         #:raw? boolean?
+         #:raw? (or-json-null/c boolean?)
          #:keep-alive (or-json-null/c string? natural-number/c)
          #:options (or-json-null/c jsexpr-hash/c)
          #:response->message (-> jsexpr? (or/c #f message?))
@@ -62,7 +62,7 @@
        jsexpr?)]
   [ollama-show-model
    (->* [ollama-client? string?]
-        [#:verbose? boolean?]
+        [#:verbose? (or-json-null/c boolean?)]
         jsexpr?)]
 
   [ollama-load-model
@@ -90,12 +90,12 @@
        any)]
   [ollama-pull-model
    (->* [ollama-client? string?]
-        [#:insecure? boolean?
+        [#:insecure? (or-json-null/c boolean?)
          #:stream? boolean?]
         (or/c jsexpr? response-stream/c))]
   [ollama-push-model
    (->* [ollama-client? string?]
-        [#:insecure? boolean?
+        [#:insecure? (or-json-null/c boolean?)
          #:stream? boolean?]
         (or/c jsexpr? response-stream/c))]
   [ollama-delete-model
@@ -109,7 +109,7 @@
    (->* [ollama-client? blob-data/c]
         [#:sha256 (or/c #f sha256-string?)]
         sha256-string?)]
-
+  
   [ollama-version
    (-> ollama-client?
        jsexpr?)])

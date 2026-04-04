@@ -226,13 +226,13 @@
       (void)))
 
 (define (ollama-show-model
-         #:verbose? [verbose? #f]
+         #:verbose? [verbose? (json-null)]
          c model)
   (struct-define ollama-client c)
   (~> (session-request
        #:method 'post
        #:auth auth
-       #:json (hasheq
+       #:json ((json-options)
                'model model
                'verbose verbose?)
        #:timeouts (ollama-timeouts)
@@ -289,7 +289,7 @@
       (void)))
 
 (define (ollama-pull-model
-         #:insecure? [insecure? #f]
+         #:insecure? [insecure? (json-null)]
          #:stream? [stream? #t]
          c model)
   (struct-define ollama-client c)
@@ -297,7 +297,7 @@
        #:method 'post
        #:stream? #t
        #:auth auth
-       #:json (hasheq
+       #:json ((json-options)
                'model model
                'insecure insecure?
                'stream stream?)
@@ -307,7 +307,7 @@
       (stream-when stream?)))
 
 (define (ollama-push-model
-         #:insecure? [insecure? #f]
+         #:insecure? [insecure? (json-null)]
          #:stream? [stream? #t]
          c model)
   (struct-define ollama-client c)
@@ -315,7 +315,7 @@
        #:method 'post
        #:stream? #t
        #:auth auth
-       #:json (hasheq
+       #:json ((json-options)
                'model model
                'insecure insecure?
                'stream stream?)
