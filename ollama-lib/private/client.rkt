@@ -78,7 +78,7 @@
          #:method 'post
          #:stream? #t
          #:auth auth
-         #:json ((jsonopt)
+         #:json ((json-options)
                  'model model
                  'stream #t
                  'prompt user-prompt
@@ -135,7 +135,7 @@
            #:method 'post
            #:stream? #t
            #:auth auth
-           #:json ((jsonopt)
+           #:json ((json-options)
                    'model model
                    'stream #t
                    'options options
@@ -184,7 +184,7 @@
   (~> (session-request
        #:method 'post
        #:auth auth
-       #:json ((jsonopt)
+       #:json ((json-options)
                'model model
                'input input
                'dimensions dimensions
@@ -258,7 +258,7 @@
          #:method 'post
          #:stream? #t
          #:auth auth
-         #:json ((jsonopt)
+         #:json ((json-options)
                  'model model
                  'from from
                  'files files

@@ -11,7 +11,7 @@
 (define (?? ?x y) (if (json-null? ?x) y ?x))
 (define (.? ?x f) (if (json-null? ?x) ?x (f ?x)))
 
-(define (jsonopt . nullable)
+(define (json-options . nullable)
   (compose1
    (lambda (hash)
      (hash-filter hash
