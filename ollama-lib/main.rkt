@@ -45,13 +45,14 @@
         (values
          chat-response/c
          chat-continuation/c))]
-   
-  [ollama-load-model
-   (-> ollama-client? string?
-       any)]
-  [ollama-unload-model
-   (-> ollama-client? string?
-       any)]
+
+  [ollama-embed
+   (->* [ollama-client? string? (or/c string? (listof string?))]
+        [#:truncate? boolean?
+         #:dimensions (or-json-null/c natural-number/c)
+         #:options (or-json-null/c jsexpr-hash/c)
+         #:keep-alive (or-json-null/c symbol? natural-number/c)]
+        jsexpr?)]
    
   [ollama-list-models
    (-> ollama-client?
@@ -63,24 +64,14 @@
    (->* [ollama-client? string?]
         [#:verbose? boolean?]
         jsexpr?)]
-   
-  [ollama-copy-model
-   (-> ollama-client? string? string?
+
+  [ollama-load-model
+   (-> ollama-client? string?
        any)]
-  [ollama-delete-model
+  [ollama-unload-model
    (-> ollama-client? string?
        any)]
 
-  [ollama-pull-model
-   (->* [ollama-client? string?]
-        [#:insecure? boolean?
-         #:stream? boolean?]
-        (or/c jsexpr? response-stream/c))]
-  [ollama-push-model
-   (->* [ollama-client? string?]
-        [#:insecure? boolean?
-         #:stream? boolean?]
-        (or/c jsexpr? response-stream/c))]
   [ollama-create-model
    (->* [ollama-client? string?]
         [#:from (or-json-null/c string?)
@@ -94,7 +85,23 @@
          #:stream? boolean?
          #:quantize (or-json-null/c quantize/c)]
         (or/c jsexpr? response-stream/c))]
-   
+  [ollama-copy-model
+   (-> ollama-client? string? string?
+       any)]
+  [ollama-pull-model
+   (->* [ollama-client? string?]
+        [#:insecure? boolean?
+         #:stream? boolean?]
+        (or/c jsexpr? response-stream/c))]
+  [ollama-push-model
+   (->* [ollama-client? string?]
+        [#:insecure? boolean?
+         #:stream? boolean?]
+        (or/c jsexpr? response-stream/c))]
+  [ollama-delete-model
+   (-> ollama-client? string?
+       any)]
+  
   [ollama-has-blob?
    (-> ollama-client? sha256-string?
        boolean?)]
@@ -103,23 +110,9 @@
         [#:sha256 (or/c #f sha256-string?)]
         sha256-string?)]
 
-  [ollama-embed
-   (->* [ollama-client? string? (or/c string? (listof string?))]
-        [#:truncate? boolean?
-         #:dimensions (or-json-null/c natural-number/c)
-         #:options (or-json-null/c jsexpr-hash/c)
-         #:keep-alive (or-json-null/c symbol? natural-number/c)]
-        jsexpr?)]
-
   [ollama-version
    (-> ollama-client?
-       jsexpr?)]
-  [ollama-online?
-   (-> ollama-client?
-       boolean?)]
-  [ollama-status
-   (-> ollama-client?
-       string?)])
+       jsexpr?)])
 
  message?
  (contract-out
