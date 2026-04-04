@@ -29,7 +29,7 @@
          #:system (or-json-null/c string?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
          #:raw? boolean?
-         #:keep-alive (or-json-null/c symbol? natural-number/c)
+         #:keep-alive (or-json-null/c string? natural-number/c)
          #:options (or-json-null/c jsexpr-hash/c)
          #:response->message (-> jsexpr? (or/c #f message?))
          #:message-callback (-> message? void?)
@@ -51,9 +51,9 @@
         [#:truncate? boolean?
          #:dimensions (or-json-null/c natural-number/c)
          #:options (or-json-null/c jsexpr-hash/c)
-         #:keep-alive (or-json-null/c symbol? natural-number/c)]
+         #:keep-alive (or-json-null/c string? natural-number/c)]
         jsexpr?)]
-   
+  
   [ollama-list-models
    (-> ollama-client?
        jsexpr?)]
