@@ -29,7 +29,7 @@
          #:system (or-json-null/c string?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
          #:raw? (or-json-null/c boolean?)
-         #:keep-alive (or-json-null/c string? natural-number/c)
+         #:keep-alive (or-json-null/c string? seconds/c)
          #:options (or-json-null/c jsexpr-hash/c)
          #:response->message (-> jsexpr? (or/c #f message?))
          #:message-callback (-> message? void?)
@@ -51,7 +51,7 @@
         [#:truncate? (or-json-null/c boolean?)
          #:dimensions (or-json-null/c natural-number/c)
          #:options (or-json-null/c jsexpr-hash/c)
-         #:keep-alive (or-json-null/c string? natural-number/c)]
+         #:keep-alive (or-json-null/c string? seconds/c)]
         jsexpr?)]
   
   [ollama-list-models
@@ -140,6 +140,8 @@
 
 (define (or-json-null/c . cs)
   (apply or/c json-null? cs))
+
+(define seconds/c natural-number/c)
 
 (define file->blob/c
   (hash/c symbol? sha256-string?))
