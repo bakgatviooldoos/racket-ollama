@@ -24,7 +24,7 @@
   [ollama-generate
    (->* [ollama-client? string?]
         [#:suffix (or-json-null/c string?)
-         #:images (or-json-null/c (listof string?))
+         #:images (listof bytes?)
          #:format (or-json-null/c 'json jsexpr?)
          #:system (or-json-null/c string?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
@@ -48,7 +48,7 @@
 
   [ollama-embed
    (->* [ollama-client? string? (or/c string? (listof string?))]
-        [#:truncate? boolean?
+        [#:truncate? (or-json-null/c boolean?)
          #:dimensions (or-json-null/c natural-number/c)
          #:options (or-json-null/c jsexpr-hash/c)
          #:keep-alive (or-json-null/c string? natural-number/c)]
