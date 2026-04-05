@@ -65,7 +65,7 @@
                #:final (not thinking))
       (if (not thinking)
           (values thinks part)
-          (values (append thinks thinking) !think)))))
+          (values (cons thinking thinks) !think)))))
 
 (define make-message #f)
 (define call-tool #f)
