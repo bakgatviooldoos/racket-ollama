@@ -55,7 +55,9 @@
                  #:result
                  (values
                   stat
-                  (reverse contents)))
+                  (reverse contents)
+                  done-reason
+                  logprobs))
                 ([part (in-mutable-treelist parts)])
         (values
          (stat . stat+ . part)
