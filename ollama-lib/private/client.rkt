@@ -63,7 +63,7 @@
          #:raw? [raw? (json-null)]
          #:keep-alive [keep-alive (json-null)]
          #:options [options (json-null)]
-         #:response-> [message-callback void]
+         #:response-> [response-> void]
          c model [user-prompt (json-null)])
   (struct-define ollama-client c)
   (define resp
@@ -94,8 +94,8 @@
         [(eof-object? data)
          (unless done?
            (set! done? #t)
-           (message-callback
-            (message-parts->complete-message parts #:chat? #f)))
+           (response->
+            (response-parts->complete-message parts)))
          (begin0 eof
            (response-close! resp))]
         [else
@@ -107,7 +107,6 @@
          #:width width
          #:height height
          #:steps [steps (json-null)]
-         #:response-> [image-callback void]
          c model user-prompt)
   (struct-define ollama-client c)
   (define resp

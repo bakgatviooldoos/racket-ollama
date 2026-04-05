@@ -45,28 +45,45 @@
       (update &eval-count)
       (update &eval-duration)))
 
-(define (message-parts->complete-message parts #:chat? [chat? #t])
+(define (message-parts->complete-message parts)
   (define-values (stat contents done-reason logprobs) ;; noqa
-    (let ([&content (if chat? &content &response)])
-      (for/fold ([stat zero-stat] ;; noqa
-                 [contents null]
-                 [done-reason #f]
-                 [logprobs #f]
-                 #:result
-                 (values
-                  stat
-                  (reverse contents)
-                  done-reason
-                  logprobs))
-                ([part (in-mutable-treelist parts)])
-        (values
-         (stat . stat+ . part)
-         (cons (&content part) contents)
-         (&done-reason part)
-         (&logprobs part)))))
+    (for/fold ([stat zero-stat] ;; noqa
+               [contents null]
+               [done-reason #f]
+               [logprobs #f]
+               #:result
+               (values
+                stat
+                (reverse contents)
+                done-reason
+                logprobs))
+              ([part (in-mutable-treelist parts)])
+      (values
+       (stat . stat+ . part)
+       (cons (&content part) contents)
+       (&done-reason part)
+       (&logprobs part))))
   (~> (hasheq
        'content (string-join contents ""))
       (hash-set stat
        'message _
        'done_reason done-reason
        'logprobs logprobs)))
+
+(define (response-parts->complete-message parts)
+  (for/fold ([stat zero-stat] ;; noqa
+             [response null]
+             [done-reason #f]
+             [logprobs #f]
+             #:result
+             (hash-set
+              stat
+              'response (string-join response "")
+              'done_reason done-reason
+              'logprobs logprobs))
+            ([part (in-mutable-treelist parts)])
+    (values
+     (stat . stat+ . part)
+     (cons (&response part) response)
+     (&done-reason part)
+     (&logprobs part))))
