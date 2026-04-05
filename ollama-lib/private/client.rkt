@@ -60,17 +60,10 @@
          #:format [output-format (json-null)]
          #:system [system-prompt (json-null)]
          #:think? [think? (json-null)]
-         #:raw? [raw? #f]
+         #:raw? [raw? (json-null)]
          #:keep-alive [keep-alive (json-null)]
          #:options [options (json-null)]
-         #:response->message
-         [response->message
-          (lambda (data)
-            (make-message
-             #:role 'assistant
-             (&content data)))]
-         #:message-callback
-         [message-callback void]
+         #:callback [message-callback void]
          c model [user-prompt (json-null)])
   (struct-define ollama-client c)
   (define resp
@@ -101,10 +94,8 @@
         [(eof-object? data)
          (unless done?
            (set! done? #t)
-           (define complete-message
-             (message-parts->complete-message parts #:chat? #f #:think? (?? think? #f)))
-           (unless (string=? (&content complete-message) "")
-             (message-callback (response->message complete-message))))
+           (message-callback
+            (message-parts->complete-message parts #:chat? #f #:think? (?? think? #f))))
          (begin0 eof
            (response-close! resp))]
         [else
@@ -116,6 +107,7 @@
          #:width width
          #:height height
          #:steps [steps (json-null)]
+         #:callback [image-callback void]
          c model user-prompt)
   (struct-define ollama-client c)
   (define resp
@@ -141,6 +133,7 @@
          #:format [output-format (json-null)]
          #:think? [think? (json-null)]
          #:tools [tools (json-null)]
+         #:callback [message-callback void]
          #:response->history-entry
          [response->history-entry
           (lambda (data)
@@ -180,6 +173,7 @@
               (set! done? #t)
               (define complete-message
                 (message-parts->complete-message parts #:think? (?? think? #f)))
+              (message-callback complete-message)
               (unless (string=? (&content complete-message) "")
                 (and~>
                  (response->history-entry complete-message)
