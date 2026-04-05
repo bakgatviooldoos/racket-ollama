@@ -111,6 +111,30 @@
          (begin0 data
            (mutable-treelist-add! parts data))]))))
 
+;; IMAGES (EXPERIMENTAL)
+(define (ollama-generate-image
+         #:width width
+         #:height height
+         #:steps [steps (json-null)]
+         c model user-prompt)
+  (struct-define ollama-client c)
+  (define resp
+    (~> (session-request
+         #:method 'post
+         #:stream? #t
+         #:auth auth
+         #:json ((json-options)
+                 'model model
+                 'stream #t
+                 'prompt user-prompt
+                 'width width
+                 'height height
+                 'steps steps)
+         #:timeouts (ollama-timeouts)
+         session (~endpoint "api" "generate"))
+        (check-response 'ollama-generate-image _)))
+  #f)
+
 ;; CHAT
 (define (ollama-start-chat
          #:options [options (json-null)]
