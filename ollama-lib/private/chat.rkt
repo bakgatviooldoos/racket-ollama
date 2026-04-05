@@ -73,38 +73,40 @@
           (values (cons thinking thinks) !think)))))
 
 (define-syntax-rule
-  (with-generate-image [(total completed image) more]
+  (with-generate-image [(total completed) more]
     . body)
-  (for ([delta (in-producer more eof)])
-    (let* ([image (if (&image delta) delta #f)]
-           [completed (if image #f (&completed delta))]
-           [total (if image #f (&total delta))])
-      . body)))
+  (for/last ([part (in-producer more eof)])
+    (cond
+      [(&image part) part]
+      [else
+       (let ([completed (&completed part)]
+             [total (&total part)])
+         . body)])))
 
 (define-syntax-rule
   (with-create-model [status more]
     . body)
-  (for ([delta (in-producer more eof)])
-    (let ([status (&status delta)])
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)])
       . body)))
 
 (define-syntax-rule
   (with-pull-model [(status digest total completed) more]
     . body)
-  (for ([delta (in-producer more eof)])
-    (let ([status (&status delta)]
-          [digest (&digest delta)]
-          [completed (&completed delta)]
-          [total (&total delta)])
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)]
+          [digest (&digest part)]
+          [completed (&completed part)]
+          [total (&total part)])
       . body)))
 
 (define-syntax-rule
   (with-push-model [(status digest total) more]
     . body)
-  (for ([delta (in-producer more eof)])
-    (let ([status (&status delta)]
-          [digest (&digest delta)]
-          [total (&total delta)])
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)]
+          [digest (&digest part)]
+          [total (&total part)])
       . body)))
 
 (define make-message #f)
