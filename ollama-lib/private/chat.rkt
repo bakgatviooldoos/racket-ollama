@@ -19,6 +19,11 @@
 (define &content (&hash-ref* 'message 'content))
 (define &thinking (&opt-hash-ref* 'message 'thinking))
 (define &tool-calls (&opt-hash-ref* 'message 'tool_calls))
+(define &image (&opt-hash-ref 'image))
+(define &status (&hash-ref 'status))
+(define &digest (&opt-hash-ref 'digest))
+(define &total (&opt-hash-ref 'total))
+(define &completed (&opt-hash-ref 'completed))
 
 (define-syntax-rule
   (with-tool-calls [(more* calls) more]
@@ -66,6 +71,41 @@
       (if (not thinking)
           (values thinks part)
           (values (cons thinking thinks) !think)))))
+
+(define-syntax-rule
+  (with-generate-image [(total completed image) more]
+    . body)
+  (for ([delta (in-producer more eof)])
+    (let* ([image (if (&image delta) delta #f)]
+           [completed (if image #f (&completed delta))]
+           [total (if image #f (&total delta))])
+      . body)))
+
+(define-syntax-rule
+  (with-create-model [status more]
+    . body)
+  (for ([delta (in-producer more eof)])
+    (let ([status (&status delta)])
+      . body)))
+
+(define-syntax-rule
+  (with-pull-model [(status digest total completed) more]
+    . body)
+  (for ([delta (in-producer more eof)])
+    (let ([status (&status delta)]
+          [digest (&digest delta)]
+          [completed (&completed delta)]
+          [total (&total delta)])
+      . body)))
+
+(define-syntax-rule
+  (with-push-model [(status digest total) more]
+    . body)
+  (for ([delta (in-producer more eof)])
+    (let ([status (&status delta)]
+          [digest (&digest delta)]
+          [total (&total delta)])
+      . body)))
 
 (define make-message #f)
 (define call-tool #f)
