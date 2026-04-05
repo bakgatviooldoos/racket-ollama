@@ -9,6 +9,7 @@
 (provide
  (all-defined-out))
 
+(define Any     (hasheq))
 (define Boolean (hasheq 'type "boolean"))
 (define Null    (hasheq 'type "null"))
 (define Number  (hasheq 'type "number"))
@@ -58,7 +59,7 @@
 (define (with-description type description)
   (hash-set type 'description description))
 
-(define (with-validate/string type
+(define (with-string type
           #:pattern [rx #f]
           #:min-length [min-length #f]
           #:max-length [max-length #f]
@@ -69,7 +70,7 @@
          [type (if (not format) type (hash-set type 'format format))])
     type))
 
-(define (with-validate/number type
+(define (with-number type
           #:minimum [minimum #f]
           #:maximum [maximum #f]
           #:multiple-of [multiple-of #f]
@@ -80,7 +81,7 @@
          [type (if (not format) type (hash-set type 'format format))])
     type))
 
-(define (with-validate/array type
+(define (with-array type
           #:prefix-items [prefix-items #f]
           #:not-items? [not-items? #f]
           #:contains [contains #f]
@@ -99,7 +100,7 @@
          [type (if (not unique-items?) type (hash-set type 'uniqueItems #t))])
     type))
 
-(define (with-validate/object type
+(define (with-object type
           #:additional-properties? [additional-properties? #t]
           #:min-properties [min-properties #f]
           #:max-properties [max-properties #f])
@@ -108,16 +109,13 @@
          [type (if (not max-properties) type (hash-set type 'maxProperties max-properties))])
     type))
 
-(define (multiple-of? x y)
-  (integer? (/ x y)))
-
 (define-syntax-rule
   (implies p q ...)
   (or (not p) (and q ...)))
 
 (define is-a?
   (match-lambda**
-    [{_ (hash)} #true]
+    [{_ (hash)} #t]
     
     [{v (hash* ['not schema])}
      (not (is-a? v schema))]
@@ -132,6 +130,27 @@
     [{v (hash* ['type "boolean"]
                #:open)}
      (boolean? v)]
+
+    [{v (and schema
+             (hash* ['type (list types ...)]
+                    #:open))}
+     (for/or ([type (in-list (remove-duplicates types))])
+       (is-a? v (hash-set schema 'type type)))]
+    
+    [{v (hash* ['allOf (list schemas ...)])}
+     (for/and ([schema (in-list schemas)])
+       (is-a? v schema))]
+
+    [{v (hash* ['anyOf (list schemas ...)])}
+     (for/or ([schema (in-list schemas)])
+       (is-a? v schema))]
+
+    [{v (hash* ['oneOf (list schemas ...)])}
+     (for/fold ([valid 0]
+                #:result (= 1 valid))
+               ([schema (in-list schemas)]
+                #:break (< 1 valid))
+       (+ valid (if (is-a? v schema) 1 0)))]
     
     [{(? number? v)
       (hash* ['type "number"]
@@ -142,7 +161,7 @@
      (and
       (<= minimum v maximum)
       (implies multiple-of
-               (multiple-of? v multiple-of)))]
+               (integer? (/ v multiple-of))))]
 
     [{(? integer? v)
       (hash* ['type "integer"]
@@ -153,7 +172,7 @@
      (and
       (<= minimum v maximum)
       (implies multiple-of
-               (multiple-of? v multiple-of)))]
+               (integer? (/ v multiple-of))))]
     
     [{(? string? v)
       (hash* ['type "string"]
@@ -215,25 +234,4 @@
       (for/and ([(key schema) (in-immutable-hash props)])
         (is-a? (hash-ref v key 'not-found) schema)))]
     
-    [{v (and schema
-             (hash* ['type (list types ...)]
-                    #:open))}
-     (for/or ([type (in-list (remove-duplicates types))])
-       (is-a? v (hash-set schema 'type type)))]
-    
-    [{v (hash* ['allOf (list schemas ...)])}
-     (for/and ([schema (in-list schemas)])
-       (is-a? v schema))]
-
-    [{v (hash* ['anyOf (list schemas ...)])}
-     (for/or ([schema (in-list schemas)])
-       (is-a? v schema))]
-
-    [{v (hash* ['oneOf (list schemas ...)])}
-     (for/fold ([valid 0]
-                #:result (= 1 valid))
-               ([schema (in-list schemas)]
-                #:break (< 1 valid))
-       (+ valid (if (is-a? v schema) 1 0)))]
-    
-    [{_ _} #false]))
+    [{_ _} #f]))
