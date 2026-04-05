@@ -31,7 +31,7 @@
          #:raw? (or-json-null/c boolean?)
          #:keep-alive (or-json-null/c string? seconds/c)
          #:options (or-json-null/c jsexpr-hash/c)
-         #:callback (-> jsexpr? any)
+         #:response-> (-> jsexpr? any)
          (or-json-null/c string?)]
         chat-response/c)]
   [ollama-start-chat
@@ -40,7 +40,6 @@
          #:format (or-json-null/c 'json jsexpr?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
          #:tools (or-json-null/c (hash/c symbol? tool-info?))
-         #:callback (-> jsexpr? any)
          #:response->history-entry (-> jsexpr? (or/c #f message?))]
         (values
          chat-response/c

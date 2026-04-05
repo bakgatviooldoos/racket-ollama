@@ -45,38 +45,24 @@
       (update &eval-count)
       (update &eval-duration)))
 
-(define ((think+ think? &thinking) thinking data)
-  (cond
-    [(and think? (&thinking data))
-     => (lambda~> (cons thinking))]
-    [else thinking]))
-
-(define (message-parts->complete-message
-         #:chat? [chat? #t]
-         #:think? [think? #f]
-         parts)
-  (define-values (stat thinking contents done-reason logprobs) ;; noqa
-    (let ([&content (if chat? &content &response)]
-          [think+ (think+ think? (if chat? &thinking* &thinking))])
+(define (message-parts->complete-message parts #:chat? [chat? #t])
+  (define-values (stat contents done-reason logprobs) ;; noqa
+    (let ([&content (if chat? &content &response)])
       (for/fold ([stat zero-stat] ;; noqa
-                 [thinking null]
                  [contents null]
                  [done-reason #f]
                  [logprobs #f]
                  #:result
                  (values
                   stat
-                  (reverse thinking)
                   (reverse contents)))
                 ([part (in-mutable-treelist parts)])
         (values
          (stat . stat+ . part)
-         (thinking . think+ . part)
          (cons (&content part) contents)
          (&done-reason part)
          (&logprobs part)))))
   (~> (hasheq
-       'thinking (string-join thinking "")
        'content (string-join contents ""))
       (hash-set stat
        'message _

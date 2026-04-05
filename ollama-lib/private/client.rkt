@@ -63,7 +63,7 @@
          #:raw? [raw? (json-null)]
          #:keep-alive [keep-alive (json-null)]
          #:options [options (json-null)]
-         #:callback [message-callback void]
+         #:response-> [message-callback void]
          c model [user-prompt (json-null)])
   (struct-define ollama-client c)
   (define resp
@@ -95,7 +95,7 @@
          (unless done?
            (set! done? #t)
            (message-callback
-            (message-parts->complete-message parts #:chat? #f #:think? (?? think? #f))))
+            (message-parts->complete-message parts #:chat? #f)))
          (begin0 eof
            (response-close! resp))]
         [else
@@ -107,7 +107,7 @@
          #:width width
          #:height height
          #:steps [steps (json-null)]
-         #:callback [image-callback void]
+         #:response-> [image-callback void]
          c model user-prompt)
   (struct-define ollama-client c)
   (define resp
@@ -133,7 +133,6 @@
          #:format [output-format (json-null)]
          #:think? [think? (json-null)]
          #:tools [tools (json-null)]
-         #:callback [message-callback void]
          #:response->history-entry
          [response->history-entry
           (lambda (data)
@@ -172,8 +171,7 @@
             (unless done?
               (set! done? #t)
               (define complete-message
-                (message-parts->complete-message parts #:think? (?? think? #f)))
-              (message-callback complete-message)
+                (message-parts->complete-message parts))
               (unless (string=? (&content complete-message) "")
                 (and~>
                  (response->history-entry complete-message)
