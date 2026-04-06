@@ -77,7 +77,7 @@
     . body))
 
 (define-syntax-rule
-  (with-thinking/response [(more* thinks) more]
+  (with-thinking/generate [(more* thinks) more]
     . body)
   (let-values ([(more* thinks)
                 (extract-thinking more #:key &thinking)])
