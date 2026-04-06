@@ -241,16 +241,18 @@
        additional-properties?
        (= (length required) (hash-count v)))
       (<= min-properties (hash-count v) max-properties)
-      (for/and ([(key schema) (in-immutable-hash props)])
-        (match (hash-ref v key 'not-found)
+      (for/and ([(key v) (in-immutable-hash v)])
+        (match (hash-ref props key 'not-found)
           ['not-found
            (or
             (implies pattern-properties
                      (let ([key (symbol->string key)])
                        (for/or ([(pattern schema) (in-immutable-hash pattern-properties)])
-                         (regexp-match? (regexp (symbol->string pattern)) key))))
+                         (and
+                          (regexp-match? (regexp (symbol->string pattern)) key)
+                          (is-a? v schema)))))
             additional-properties?)]
-          [v
+          [schema
            (is-a? v schema)])))]
     
     [{_ _} #f]))
