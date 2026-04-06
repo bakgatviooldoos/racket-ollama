@@ -199,14 +199,17 @@
              ['maxItems max-items #:default +inf.0]
              ['uniqueItems unique-items? #:default #f]
              #:open)}
+     (define n (length v))
      (and
+      (<= min-items n max-items)
       (implies items
                (for/and ([item (in-list v)])
-                 (is-a? item items))
-               (<= min-items (length v) max-items))
+                 (is-a? item items)))
       (implies prefix-items
-               (for/and ([schema (in-list prefix-items)]
-                         [item (in-list v)])
+               (implies (not items)
+                        (= (length prefix-items) n))
+               (for/and ([item (in-list v)]
+                         [schema (in-list prefix-items)])
                  (is-a? item schema)))
       (implies contains
                (<= min-contains

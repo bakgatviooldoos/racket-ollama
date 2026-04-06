@@ -113,10 +113,13 @@
                   (hash-set! tools 'id info))]))
          (define (get-tools)
            (hash-copy tools))
-         (define (call-tool data)
-           (do-call-tool tools data)))]))
+         (define (call-tool data #:validate? [validate? (validate-tool-arg-schema?)])
+           (do-call-tool tools data validate?)))]))
 
-(define (do-call-tool tools data)
+(define validate-tool-arg-schema?
+  (make-parameter #f))
+
+(define (do-call-tool tools data validate?)
   (define func (hash-ref data 'function))
   (define name-str (hash-ref func 'name))
   (define name (string->symbol name-str))
@@ -137,15 +140,26 @@
   (define arg-vals
     (for/list ([arg (in-list args)])
       (struct-define tool-arg-info arg)
-      (hash-ref
-       #;ht arguments
-       #;key label
-       #;failure-result
-       (lambda ()
-         (raise-tool-error
-          #:hints '("check the tool's schema again and retry")
-          #:data data
-          "tool '~a' requires '~a' as an argument" name label)))))
+      (define value
+        (hash-ref
+         #;ht arguments
+         #;key label
+         #;failure-result
+         (lambda ()
+           (raise-tool-error
+            #:hints '("check the tool's schema again and retry")
+            #:data data
+            "tool '~a' requires '~a' as an argument" name label))))
+      (when validate?
+        (unless (is-a? type value)
+          (raise-tool-error
+           #:hints '("check the argument's schema again and retry")
+           #:data data
+           "invalid argument in tool '~a':~nargument '~a' expected type '~a', received: '~a'"
+           name label
+           (jsexpr->string type)
+           (jsexpr->string value))))
+      value))
   (define res
     (parameterize ([current-call-data data])
       (apply proc arg-vals)))
