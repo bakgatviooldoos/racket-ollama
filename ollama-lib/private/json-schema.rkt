@@ -9,6 +9,7 @@
 (provide
   (all-defined-out))
 
+(define None    #f)
 (define Any     (hasheq))
 (define Boolean (hasheq 'type "boolean"))
 (define Null    (hasheq 'type "null"))
@@ -49,70 +50,79 @@
 (define (Optional type)
   (Or Null type))
 
-(define (AllOf . types) (hasheq 'allOf types))
-(define (AnyOf . types) (hasheq 'anyOf types))
-(define (OneOf . types) (hasheq 'oneOf types))
-
 (define (Not type) (hasheq 'not type))
 (define (Const value) (hasheq 'const value))
+
+(define (AllOf #:in [in Any] . types) (hash-set in 'allOf types))
+(define (AnyOf #:in [in Any] . types) (hash-set in 'anyOf types))
+(define (OneOf #:in [in Any] . types) (hash-set in 'oneOf types))
 
 (define (with-description type description)
   (hash-set type 'description description))
 
-(define (with-string type
+(define-syntax-rule
+  (depends [e p] q ...)
+  (cond [(not p) e] [else q ...]))
+
+(define (with-string [type Any]
           #:pattern [rx #f]
           #:min-length [min-length #f]
           #:max-length [max-length #f]
           #:format [format #f])
-  (let* ([type (if (not rx) type (hash-set type 'pattern (object-name rx)))]
-         [type (if (not min-length) type (hash-set type 'minLength min-length))]
-         [type (if (not max-length) type (hash-set type 'maxLength max-length))]
-         [type (if (not format) type (hash-set type 'format format))])
+  (let* ([type (depends [type rx] (hash-set type 'pattern (object-name rx)))]
+         [type (depends [type min-length] (hash-set type 'minLength min-length))]
+         [type (depends [type max-length] (hash-set type 'maxLength max-length))]
+         [type (depends [type format] (hash-set type 'format format))])
     type))
 
-(define (with-number type
+(define (with-number [type Any]
           #:minimum [minimum #f]
           #:maximum [maximum #f]
           #:multiple-of [multiple-of #f]
           #:format [format #f])
-  (let* ([type (if (not minimum) type (hash-set type 'minimum minimum))]
-         [type (if (not maximum) type (hash-set type 'maximum maximum))]
-         [type (if (not multiple-of) type (hash-set type 'multipleOf multiple-of))]
-         [type (if (not format) type (hash-set type 'format format))])
+  (let* ([type (depends [type minimum] (hash-set type 'minimum minimum))]
+         [type (depends [type maximum] (hash-set type 'maximum maximum))]
+         [type (depends [type multiple-of] (hash-set type 'multipleOf multiple-of))]
+         [type (depends [type format] (hash-set type 'format format))])
     type))
 
-(define (with-array type
-          #:prefix-items [prefix-items #f]
+(define (with-array [type Any]
+          #:min-items [min-items #f]
+          #:max-items [max-items #f]
           #:not-items? [not-items? #f]
+          #:prefix-items [prefix-items #f]
           #:contains [contains #f]
           #:min-contains [min-contains #f]
           #:max-contains [max-contains #f]
-          #:min-items [min-items #f]
-          #:max-items [max-items #f]
           #:unique-items? [unique-items? #f])
-  (let* ([type (if (not prefix-items) type (hash-set type 'prefixItems prefix-items))]
-         [type (if (not not-items?) type (hash-set type 'items #f))]
-         [type (if (not min-items) type (hash-set type 'minItems min-items))]
-         [type (if (not max-items) type (hash-set type 'maxItems max-items))]
-         [type (if (not contains) type (hash-set type 'contains contains))]
-         [type (if (not min-contains) type (hash-set type 'minContains min-contains))]
-         [type (if (not max-contains) type (hash-set type 'maxContains max-contains))]
-         [type (if (not unique-items?) type (hash-set type 'uniqueItems #t))])
+  (let* ([type (depends [type min-items] (hash-set type 'minItems min-items))]
+         [type (depends [type max-items] (hash-set type 'maxItems max-items))]
+         [type (depends [type not-items?] (hash-set type 'items #f))]
+         [type (depends [type prefix-items] (hash-set type 'prefixItems prefix-items))]
+         [type (depends [type contains] (hash-set type 'contains contains))]
+         [type (depends [type min-contains] (hash-set type 'minContains min-contains))]
+         [type (depends [type max-contains] (hash-set type 'maxContains max-contains))]
+         [type (depends [type unique-items?] (hash-set type 'uniqueItems #t))])
     type))
 
-(define (with-object type
+(define (with-object [type Any]
+          #:min-properties [min-properties #f]
+          #:max-properties [max-properties #f]
           #:pattern-properties [pattern-properties #f]
           #:additional-properties? [additional-properties? #t]
-          #:min-properties [min-properties #f]
-          #:max-properties [max-properties #f])
-  (let* ([type (if (not additional-properties?) type (hash-set type 'additionalProperties #t))]
-         [type (if (not min-properties) type (hash-set type 'minProperties min-properties))]
-         [type (if (not max-properties) type (hash-set type 'maxProperties max-properties))]
-         [type (if (not pattern-properties)
-                   type
-                   (hash-set type 'patternProperties
-                             (for/hasheq ([(rx schema) (in-immutable-hash pattern-properties)])
-                               (values (string->symbol (object-name rx)) schema))))])
+          #:dependent-required [dependent-required #f]
+          #:dependent-schemas [dependent-schemas #f])
+  (let* ([type (depends [type min-properties] (hash-set type 'minProperties min-properties))]
+         [type (depends [type max-properties] (hash-set type 'maxProperties max-properties))]
+         [type (depends [type pattern-properties]
+                 (hash-set type 'patternProperties
+                           (for/hasheq ([(rx schema) (in-immutable-hash pattern-properties)])
+                             (values (string->symbol (object-name rx)) schema))))]
+         [type (depends [type (not additional-properties?)] (hash-set type 'additionalProperties #f))]
+         [type (depends [type dependent-required]
+                 (hash-set type 'dependentRequired dependent-required))]
+         [type (depends [type dependent-schemas]
+                 (hash-set type 'dependentSchemas dependent-schemas))])
     type))
 
 (define-syntax-rule
@@ -121,37 +131,50 @@
 
 (define is-a?
   (match-lambda**
-    [{_ (hash)} #t]
+    [{_ #f} #f]
     
-    [{v (hash* ['not schema])}
+    [{_ (hash #:closed)} #t]
+    
+    [{v (hash* ['not schema]
+               #:closed)}
      (not (is-a? v schema))]
 
-    [{v (hash* ['const value])}
+    [{v (hash* ['const value]
+               #:closed)}
      (equal? value v)]
     
-    [{v (hash* ['type "null"]
-               #:open)}
-     (eq? (json-null) v)]
+    [{v (hash* ['allOf (list schemas ...)]
+               #:rest u)}
+     (and
+      (is-a? v u)
+      (for/and ([schema (in-list schemas)])
+        (is-a? v schema)))]
 
+    [{v (hash* ['anyOf (list schemas ...)]
+               #:rest u)}
+     (and
+      (is-a? v u)
+      (for/or ([schema (in-list schemas)])
+        (is-a? v schema)))]
+
+    [{v (hash* ['oneOf (list schemas ...)]
+               #:rest u)}
+     (and
+      (is-a? v u)
+      (for/fold ([count 0]
+                 #:result (= 1 count))
+                ([schema (in-list schemas)]
+                 #:break (< 1 count))
+        (+ count (if (is-a? v schema) 1 0))))]
+
+    [{v (hash* ['type "null"]
+               #:closed)}
+     (eq? (json-null) v)]
+    
     [{v (hash* ['type "boolean"]
-               #:open)}
+               #:closed)}
      (boolean? v)]
     
-    [{v (hash* ['allOf (list schemas ...)])}
-     (for/and ([schema (in-list schemas)])
-       (is-a? v schema))]
-
-    [{v (hash* ['anyOf (list schemas ...)])}
-     (for/or ([schema (in-list schemas)])
-       (is-a? v schema))]
-
-    [{v (hash* ['oneOf (list schemas ...)])}
-     (for/fold ([count 0]
-                #:result (= 1 count))
-               ([schema (in-list schemas)]
-                #:break (< 1 count))
-       (+ count (if (is-a? v schema) 1 0)))]
-
     [{v (and schema
              (hash* ['type (list types ...)]
                     #:open))}
@@ -159,34 +182,37 @@
        (is-a? v (hash-set schema 'type type)))]
     
     [{(? number? v)
-      (hash* ['type "number"]
+      (hash* ['type type #:default "number"]
              ['minimum minimum #:default -inf.0]
              ['maximum maximum #:default +inf.0]
              ['multipleOf multiple-of #:default #f]
-             #:open)}
+             #:closed)}
+     #:when (string=? "number" type)
      (and
       (<= minimum v maximum)
       (implies multiple-of
         (integer? (/ v multiple-of))))]
 
     [{(? integer? v)
-      (hash* ['type "integer"]
+      (hash* ['type type #:default "integer"]
              ['minimum minimum #:default -inf.0]
              ['maximum maximum #:default +inf.0]
              ['multipleOf multiple-of #:default #f]
-             #:open)}
+             #:closed)}
+     #:when (string=? "integer" type)
      (and
       (<= minimum v maximum)
       (implies multiple-of
         (integer? (/ v multiple-of))))]
     
     [{(? string? v)
-      (hash* ['type "string"]
+      (hash* ['type type #:default "string"]
              ['enum options #:default #f]
              ['pattern rx #:default #f]
              ['minLength min-length #:default -inf.0]
              ['maxLength max-length #:default +inf.0]
-             #:open)}
+             #:closed)}
+     #:when (string=? "string" type)
      (and
       (<= min-length (string-length v) max-length)
       (implies options
@@ -195,16 +221,17 @@
         (regexp-match? (regexp rx) v)))]
 
     [{(? list? v)
-      (hash* ['type "array"]
+      (hash* ['type type #:default "array"]
              ['items items]
+             ['minItems min-items #:default 0]
+             ['maxItems max-items #:default +inf.0]
              ['prefixItems prefix-items #:default #f]
              ['contains contains #:default #f]
              ['minContains min-contains #:default 1]
              ['maxContains max-contains #:default +inf.0]
-             ['minItems min-items #:default 0]
-             ['maxItems max-items #:default +inf.0]
              ['uniqueItems unique-items? #:default #f]
-             #:open)}
+             #:closed)}
+     #:when (string=? "array" type)
      (define n (length v))
      (and
       (<= min-items n max-items)
@@ -222,27 +249,32 @@
             (for/sum ([item (in-list v)])
               (if (is-a? item contains) 1 0))
             max-contains))
+      (implies (not items) (null? v))
       (implies unique-items?
         (not (check-duplicates v))))]
     
     [{(? hash? v)
-      (hash* ['type "object"]
-             ['properties props]
+      (hash* ['type type #:default "object"]
+             ['properties properties]
              ['required required #:default null]
-             ['patternProperties pattern-properties #:default #f]
-             ['additionalProperties additional-properties? #:default #f]
              ['minProperties min-properties #:default 0]
              ['maxProperties max-properties #:default +inf.0]
-             #:open)}
+             ['patternProperties pattern-properties #:default #f]
+             ['additionalProperties additional-properties? #:default #t]
+             ['dependentRequired dependent-required #:default #f]
+             ['dependentSchemas dependent-schemas #:default #f]
+             #:closed)}
+     #:when (string=? "object" type)
+     (define n (hash-count v))
      (and
+      (<= min-properties n max-properties)
       (for/and ([key (in-list required)])
         (hash-has-key? v (string->symbol key)))
       (or
        additional-properties?
-       (= (length required) (hash-count v)))
-      (<= min-properties (hash-count v) max-properties)
+       (= (length required) n))
       (for/and ([(key v) (in-immutable-hash v)])
-        (match (hash-ref props key 'not-found)
+        (match (hash-ref properties key 'not-found)
           ['not-found
            (if (not pattern-properties)
                additional-properties?
@@ -252,6 +284,15 @@
                     (regexp-match? (regexp (symbol->string pattern)) key)
                     (is-a? v schema)))))]
           [schema
-           (is-a? v schema)])))]
+           (is-a? v schema)]))
+      (implies dependent-required
+        (for*/and ([(key deps) (in-immutable-hash dependent-required)]
+                   #:when (hash-has-key? v key)
+                   [dep (in-list deps)])
+          (hash-has-key? v (string->symbol dep))))
+      (implies dependent-schemas
+        (for/and ([(key schema) (in-immutable-hash dependent-schemas)]
+                  #:when (hash-has-key? v key))
+          (is-a? v schema))))]
     
     [{_ _} #f]))
