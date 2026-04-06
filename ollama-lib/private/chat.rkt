@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require
+  (for-syntax racket/base)
   data/monocle
   racket/string)
 
@@ -16,61 +17,71 @@
       (let ([continue (compose loop continue)])
         . body))))
 
-(define &content (&hash-ref* 'message 'content))
-(define &thinking (&opt-hash-ref* 'message 'thinking))
-(define &tool-calls (&opt-hash-ref* 'message 'tool_calls))
+(define &message.content (&hash-ref* 'message 'content))
+(define &message.thinking (&opt-hash-ref* 'message 'thinking))
+(define &message.tool-calls (&opt-hash-ref* 'message 'tool_calls))
+(define &response (&hash-ref 'response))
+(define &thinking (&opt-hash-ref 'thinking))
 (define &image (&opt-hash-ref 'image))
 (define &status (&hash-ref 'status))
 (define &digest (&opt-hash-ref 'digest))
 (define &total (&opt-hash-ref 'total))
 (define &completed (&opt-hash-ref 'completed))
 
+(define (prepend-part part more*)
+  (lambda ()
+    (begin0 part
+      (set! part (more*)))))
+
+(define (extract-tool-calls more*)
+  (for/fold ([calls null]
+             [!call #f]
+             #:result
+             (values
+              (prepend-part !call more*)
+              (reverse calls)))
+            ([part (in-producer more* eof)]
+             #:do [(define tools (&message.tool-calls part))]
+             #:final (not tools))
+    (if (not tools)
+        (values calls part)
+        (values (append calls tools) !call))))
+
 (define-syntax-rule
   (with-tool-calls [(more* calls) more]
     . body)
-  (let ([more* more])
-    (for/fold ([calls null]
-               [!call #f]
-               #:result
-               (cond
-                 [(string=? "" (&content !call))
-                  . body]
-                 [else
-                  (let ([more*
-                         (lambda ()
-                           (begin0 !call
-                             (set! !call (more*))))])
-                    . body)]))
-              ([part (in-producer more* eof)]
-               #:do [(define tools (&tool-calls part))]
-               #:final (not tools))
-      (if (not tools)
-          (values calls part)
-          (values (append calls tools) !call)))))
+  (let-values ([(more* calls) (extract-tool-calls more)])
+    . body))
+
+(define (extract-thinking
+         #:key [&thinking &message.thinking]
+         more*)
+  (for/fold ([thinks null]
+             [!think #f]
+             #:result
+             (values
+              (prepend-part !think more*)
+              (string-append* (reverse thinks))))
+            ([part (in-producer more* eof)]
+             #:do [(define thinking (&thinking part))]
+             #:final (not thinking))
+    (if (not thinking)
+        (values thinks part)
+        (values (cons thinking thinks) !think))))
 
 (define-syntax-rule
   (with-thinking [(more* thinks) more]
     . body)
-  (let ([more* more])
-    (for/fold ([thinks null]
-               [!think #f]
-               #:result
-               (let ([thinks (string-join (reverse thinks) "")])
-                 (cond
-                   [(string=? "" (&content !think))
-                    . body]
-                   [else
-                    (let ([more*
-                           (lambda ()
-                             (begin0 !think
-                               (set! !think (more*))))])
-                      . body)])))
-              ([part (in-producer more* eof)]
-               #:do [(define thinking (&thinking part))]
-               #:final (not thinking))
-      (if (not thinking)
-          (values thinks part)
-          (values (cons thinking thinks) !think)))))
+  (let-values ([(more* thinks)
+                (extract-thinking more)])
+    . body))
+
+(define-syntax-rule
+  (with-thinking/response [(more* thinks) more]
+    . body)
+  (let-values ([(more* thinks)
+                (extract-thinking more #:key &thinking)])
+    . body))
 
 (define-syntax-rule
   (with-generate-image [(total completed) more]
@@ -96,8 +107,8 @@
   (for ([part (in-producer more eof)])
     (let ([status (&status part)]
           [digest (&digest part)]
-          [completed (&completed part)]
-          [total (&total part)])
+          [total (&total part)]
+          [completed (&completed part)])
       . body)))
 
 (define-syntax-rule
@@ -109,6 +120,58 @@
           [total (&total part)])
       . body)))
 
+(define (->chat/content-string more)
+  (string-append*
+   (for/list ([part (in-producer more eof)])
+     (&message.content part))))
+
+(define (->generate/response-string more)
+  (string-append*
+   (for/list ([part (in-producer more eof)])
+     (&response part))))
+
+(define (->labeled-chat-response more)
+  (lambda ()
+    (let ([part (more)])
+      (cond
+        [(eof-object? part)
+         (values #f eof)]
+        [(&message.tool-calls part)
+         (values 'tool-calls part)]
+        [(&message.thinking part)
+         (values 'thinking part)]
+        [(non-empty-string? (&message.content part))
+         (values 'content part)]
+        [else
+         (values 'done part)]))))
+
+(define (->labeled-generate-response more)
+  (lambda ()
+    (let ([part (more)])
+      (cond
+        [(eof-object? part)
+         (values #f eof)]
+        [(&thinking part)
+         (values 'thinking part)]
+        [(non-empty-string? (&response part))
+         (values 'content part)]
+        [else
+         (values 'done part)]))))
+
+(define-sequence-syntax in-chat-response
+  (lambda (stx) #'->labeled-chat-response)
+  (lambda (stx)
+    (syntax-case stx ()
+      [[(label part) (_ more)]
+       #'[(label part) (in-producer more (lambda (l p) (eof-object? p)))]])))
+
+(define-sequence-syntax in-generate-response
+  (lambda (stx) #'->labeled-generate-response)
+  (lambda (stx)
+    (syntax-case stx ()
+      [[(label part) (_ more)]
+       #'[(label part) (in-producer more (lambda (l p) (eof-object? p)))]])))
+
 (define make-message #f)
 (define call-tool #f)
 
@@ -118,8 +181,7 @@
       [(null? calls)
        (with-thinking [(more thinks) more]
          (displayln thinks)
-         (for ([data (in-producer more eof)])
-           (displayln data))
+         (displayln (->chat/content-string more))
          (continue "more, more!"))]
       [else
        (continue
