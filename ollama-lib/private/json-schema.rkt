@@ -235,9 +235,8 @@
      (define n (length v))
      (and
       (<= min-items n max-items)
-      (implies items
-        (for/and ([item (in-list v)])
-          (is-a? item items)))
+      (for/and ([item (in-list v)])
+        (is-a? item items))
       (implies prefix-items
         (implies (not items)
           (= (length prefix-items) n))
@@ -249,7 +248,6 @@
             (for/sum ([item (in-list v)])
               (if (is-a? item contains) 1 0))
             max-contains))
-      (implies (not items) (null? v))
       (implies unique-items?
         (not (check-duplicates v))))]
     
