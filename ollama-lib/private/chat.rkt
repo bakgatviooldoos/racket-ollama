@@ -120,12 +120,12 @@
           [total (&total part)])
       . body)))
 
-(define (->chat/content-string more)
+(define (extract-content-string more)
   (string-append*
    (for/list ([part (in-producer more eof)])
      (&message.content part))))
 
-(define (->generate/response-string more)
+(define (extract-response-string more)
   (string-append*
    (for/list ([part (in-producer more eof)])
      (&response part))))
@@ -181,7 +181,7 @@
       [(null? calls)
        (with-thinking [(more thinks) more]
          (displayln thinks)
-         (displayln (->chat/content-string more))
+         (displayln (extract-content-string more))
          (continue "more, more!"))]
       [else
        (continue
