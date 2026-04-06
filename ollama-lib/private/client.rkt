@@ -107,24 +107,24 @@
          #:width width
          #:height height
          #:steps [steps (json-null)]
+         #:stream? [stream? #t]
          c model user-prompt)
   (struct-define ollama-client c)
-  (define resp
-    (~> (session-request
-         #:method 'post
-         #:stream? #t
-         #:auth auth
-         #:json ((json-options)
-                 'model model
-                 'stream #t
-                 'prompt user-prompt
-                 'width width
-                 'height height
-                 'steps steps)
-         #:timeouts (ollama-timeouts)
-         session (~endpoint "api" "generate"))
-        (check-response 'ollama-generate-image _)))
-  #f)
+  (~> (session-request
+       #:method 'post
+       #:stream? #t
+       #:auth auth
+       #:json ((json-options)
+               'model model
+               'stream #t
+               'prompt user-prompt
+               'width width
+               'height height
+               'steps steps)
+       #:timeouts (ollama-timeouts)
+       session (~endpoint "api" "generate"))
+      (check-response 'ollama-generate-image _)
+      (stream-when stream?)))
 
 ;; CHAT
 (define (ollama-start-chat
@@ -423,7 +423,7 @@
           (if (not (eof-object? data))
               data
               (begin0 eof
-                      (response-close! resp)))))))
+                (response-close! resp)))))))
 
 ;; FILE-BLOB HELPERS
 (define (->port data [dup? #f])
