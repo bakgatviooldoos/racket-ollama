@@ -27,6 +27,9 @@
 (define current-call-data
   (make-parameter #f))
 
+(define validate-tool-arg-schema?
+  (make-parameter #f))
+
 (struct exn:fail:tool exn:fail (data hints)
   #:methods gen:to-jsexpr
   [(define (->jsexpr e)
@@ -115,9 +118,6 @@
            (hash-copy tools))
          (define (call-tool data #:validate? [validate? (validate-tool-arg-schema?)])
            (do-call-tool tools data validate?)))]))
-
-(define validate-tool-arg-schema?
-  (make-parameter #f))
 
 (define (do-call-tool tools data validate?)
   (define func (hash-ref data 'function))
