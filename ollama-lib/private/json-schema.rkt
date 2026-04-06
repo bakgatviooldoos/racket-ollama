@@ -101,12 +101,18 @@
     type))
 
 (define (with-object type
+          #:pattern-properties [pattern-properties #f]
           #:additional-properties? [additional-properties? #t]
           #:min-properties [min-properties #f]
           #:max-properties [max-properties #f])
   (let* ([type (if additional-properties? type (hash-set type 'additionalProperties #f))]
          [type (if (not min-properties) type (hash-set type 'minProperties min-properties))]
-         [type (if (not max-properties) type (hash-set type 'maxProperties max-properties))])
+         [type (if (not max-properties) type (hash-set type 'maxProperties max-properties))]
+         [type (if (not pattern-properties)
+                   type
+                   (hash-set type 'patternProperties
+                             (for/hasheq ([(k v) (in-immutable-hash pattern-properties)])
+                               (values (string->symbol (object-name k)) v))))])
     type))
 
 (define-syntax-rule
@@ -223,7 +229,8 @@
       (hash* ['type "object"]
              ['properties props]
              ['required required #:default null]
-             ['additionalProperties additional-properties? #:default #t]
+             ['patternProperties pattern-properties #:default #f]
+             ['additionalProperties additional-properties? #:default #f]
              ['minProperties min-properties #:default 0]
              ['maxProperties max-properties #:default +inf.0]
              #:open)}
@@ -235,6 +242,15 @@
        (= (length required) (hash-count v)))
       (<= min-properties (hash-count v) max-properties)
       (for/and ([(key schema) (in-immutable-hash props)])
-        (is-a? (hash-ref v key 'not-found) schema)))]
+        (match (hash-ref v key 'not-found)
+          ['not-found
+           (or
+            (implies pattern-properties
+                     (let ([key (symbol->string key)])
+                       (for/or ([(pattern schema) (in-immutable-hash pattern-properties)])
+                         (regexp-match? (regexp (symbol->string pattern)) key))))
+            additional-properties?)]
+          [v
+           (is-a? v schema)])))]
     
     [{_ _} #f]))
