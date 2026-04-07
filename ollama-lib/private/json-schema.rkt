@@ -57,7 +57,7 @@
 (define (AnyOf #:in [in Some] . types) (hash-set in 'anyOf types))
 (define (OneOf #:in [in Some] . types) (hash-set in 'oneOf types))
 
-(define (Condition #:in [in Some] #:if cond #:then then #:else [else #f])
+(define (If #:in [in Some] cond #:then then #:else [else #f])
   (hash-set* in 'if cond 'then then 'else else))
 
 (define (with-description type description)
