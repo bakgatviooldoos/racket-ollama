@@ -57,6 +57,9 @@
 (define (AnyOf #:in [in Any] . types) (hash-set in 'anyOf types))
 (define (OneOf #:in [in Any] . types) (hash-set in 'oneOf types))
 
+(define (Condition #:in [in Any] #:if cond #:then then #:else [else Any])
+  (hash-set* in 'if cond 'then then 'else else))
+
 (define (with-description type description)
   (hash-set type 'description description))
 
@@ -72,7 +75,7 @@
   (let* ([type (depends [type rx] (hash-set type 'pattern (object-name rx)))]
          [type (depends [type min-length] (hash-set type 'minLength min-length))]
          [type (depends [type max-length] (hash-set type 'maxLength max-length))]
-         [type (depends [type format] (hash-set type 'format format))])
+         [type (depends [type format] (hash-set type 'format (symbol->string format)))])
     type))
 
 (define (with-number [type Any]
@@ -83,7 +86,7 @@
   (let* ([type (depends [type minimum] (hash-set type 'minimum minimum))]
          [type (depends [type maximum] (hash-set type 'maximum maximum))]
          [type (depends [type multiple-of] (hash-set type 'multipleOf multiple-of))]
-         [type (depends [type format] (hash-set type 'format format))])
+         [type (depends [type format] (hash-set type 'format (symbol->string format)))])
     type))
 
 (define (with-array [type Any]
@@ -106,13 +109,15 @@
     type))
 
 (define (with-object [type Any]
+          #:required [required #f]
           #:min-properties [min-properties #f]
           #:max-properties [max-properties #f]
           #:pattern-properties [pattern-properties #f]
           #:additional-properties? [additional-properties? #t]
           #:dependent-required [dependent-required #f]
           #:dependent-schemas [dependent-schemas #f])
-  (let* ([type (depends [type min-properties] (hash-set type 'minProperties min-properties))]
+  (let* ([type (depends [type required] (hash-set type 'required required))]
+         [type (depends [type min-properties] (hash-set type 'minProperties min-properties))]
          [type (depends [type max-properties] (hash-set type 'maxProperties max-properties))]
          [type (depends [type pattern-properties]
                  (hash-set type 'patternProperties
@@ -166,6 +171,16 @@
                 ([schema (in-list schemas)]
                  #:break (< 1 count))
         (+ count (if (is-a? v schema) 1 0))))]
+    
+    [{v (hash* ['if cond]
+               ['then then #:default Any]
+               ['else else #:default Any]
+               #:rest u)}
+     (and
+      (is-a? v u)
+      (if (is-a? v cond)
+          (is-a? v then)
+          (is-a? v else)))]
 
     [{v (hash* ['type "null"]
                #:closed)}
