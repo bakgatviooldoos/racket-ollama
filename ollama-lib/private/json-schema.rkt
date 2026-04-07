@@ -134,7 +134,7 @@
   (implies p q ...)
   (or (not p) (and q ...)))
 
-(define is-a?
+(define json-is?
   (match-lambda**
     [{_ #f} #f]
     
@@ -142,7 +142,7 @@
     
     [{v (hash* ['not schema]
                #:closed)}
-     (not (is-a? v schema))]
+     (not (json-is? v schema))]
 
     [{v (hash* ['const value]
                #:closed)}
@@ -151,36 +151,36 @@
     [{v (hash* ['allOf (list schemas ...)]
                #:rest u)}
      (and
-      (is-a? v u)
+      (json-is? v u)
       (for/and ([schema (in-list schemas)])
-        (is-a? v schema)))]
+        (json-is? v schema)))]
 
     [{v (hash* ['anyOf (list schemas ...)]
                #:rest u)}
      (and
-      (is-a? v u)
+      (json-is? v u)
       (for/or ([schema (in-list schemas)])
-        (is-a? v schema)))]
+        (json-is? v schema)))]
 
     [{v (hash* ['oneOf (list schemas ...)]
                #:rest u)}
      (and
-      (is-a? v u)
+      (json-is? v u)
       (for/fold ([count 0]
                  #:result (= 1 count))
                 ([schema (in-list schemas)]
                  #:break (< 1 count))
-        (+ count (if (is-a? v schema) 1 0))))]
+        (+ count (if (json-is? v schema) 1 0))))]
     
     [{v (hash* ['if cond]
                ['then then #:default Any]
                ['else else #:default Any]
                #:rest u)}
      (and
-      (is-a? v u)
-      (if (is-a? v cond)
-          (is-a? v then)
-          (is-a? v else)))]
+      (json-is? v u)
+      (if (json-is? v cond)
+          (json-is? v then)
+          (json-is? v else)))]
 
     [{v (hash* ['type "null"]
                #:closed)}
@@ -194,7 +194,7 @@
              (hash* ['type (list types ...)]
                     #:open))}
      (for/or ([type (in-list (remove-duplicates types))])
-       (is-a? v (hash-set schema 'type type)))]
+       (json-is? v (hash-set schema 'type type)))]
     
     [{(? number? v)
       (hash* ['type type #:default "number"]
@@ -251,17 +251,17 @@
      (and
       (<= min-items n max-items)
       (for/and ([item (in-list v)])
-        (is-a? item items))
+        (json-is? item items))
       (implies prefix-items
         (implies (not items)
           (= (length prefix-items) n))
         (for/and ([item (in-list v)]
                   [schema (in-list prefix-items)])
-          (is-a? item schema)))
+          (json-is? item schema)))
       (implies contains
         (<= min-contains
             (for/sum ([item (in-list v)])
-              (if (is-a? item contains) 1 0))
+              (if (json-is? item contains) 1 0))
             max-contains))
       (implies unique-items?
         (not (check-duplicates v))))]
@@ -295,9 +295,9 @@
                  (for/or ([(pattern schema) (in-immutable-hash pattern-properties)])
                    (and
                     (regexp-match? (regexp (symbol->string pattern)) key)
-                    (is-a? v schema)))))]
+                    (json-is? v schema)))))]
           [schema
-           (is-a? v schema)]))
+           (json-is? v schema)]))
       (implies dependent-required
         (for*/and ([(key deps) (in-immutable-hash dependent-required)]
                    #:when (hash-has-key? v key)
@@ -306,6 +306,6 @@
       (implies dependent-schemas
         (for/and ([(key schema) (in-immutable-hash dependent-schemas)]
                   #:when (hash-has-key? v key))
-          (is-a? v schema))))]
+          (json-is? v schema))))]
     
     [{_ _} #f]))
