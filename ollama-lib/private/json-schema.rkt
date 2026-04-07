@@ -260,8 +260,9 @@
           (json-is? item schema)))
       (implies contains
         (<= min-contains
-            (for/sum ([item (in-list v)])
-              (if (json-is? item contains) 1 0))
+            (for/sum ([item (in-list v)]
+                      #:when (json-is? item contains))
+              1)
             max-contains))
       (implies unique-items?
         (not (check-duplicates v))))]
@@ -292,10 +293,9 @@
            (if (not pattern-properties)
                additional-properties?
                (let ([key (symbol->string key)])
-                 (for/or ([(pattern schema) (in-immutable-hash pattern-properties)])
-                   (and
-                    (regexp-match? (regexp (symbol->string pattern)) key)
-                    (json-is? v schema)))))]
+                 (for/or ([(pattern schema) (in-immutable-hash pattern-properties)]
+                          #:when (regexp-match? (regexp (symbol->string pattern)) key))
+                   (json-is? v schema))))]
           [schema
            (json-is? v schema)]))
       (implies dependent-required
