@@ -11,8 +11,8 @@
 
 (define None    #f)
 (define Some    (hasheq))
-(define Boolean (hasheq 'type "boolean"))
 (define Null    (hasheq 'type "null"))
+(define Boolean (hasheq 'type "boolean"))
 (define Number  (hasheq 'type "number"))
 (define Integer (hasheq 'type "integer"))
 (define String  (hasheq 'type "string"))
@@ -57,7 +57,7 @@
 (define (AnyOf #:in [in Some] . types) (hash-set in 'anyOf types))
 (define (OneOf #:in [in Some] . types) (hash-set in 'oneOf types))
 
-(define (If #:in [in Some] cond #:then then #:else [else #f])
+(define (If #:in [in Some] cond #:then [then #t] #:else [else #f])
   (hash-set* in 'if cond 'then then 'else else))
 
 (define (with-description type description)
@@ -151,7 +151,55 @@
                     (values (string->symbol (object-name rx)) schema))])])
     type))
 
-(define json-is?
+(define (json/array? v schema)
+  (match* (v schema)
+    [{(? list?)
+      (hash* ['type type #:default "array"]
+             ['items items]
+             ['minItems min-items #:default 0]
+             ['maxItems max-items #:default +inf.0]
+             ['prefixItems prefix-items #:default null]
+             ['contains contains #:default _]
+             ['minContains min-contains #:default 1]
+             ['maxContains max-contains #:default +inf.0]
+             ['uniqueItems unique-items? #:default #f]
+             ['unevaluatedItems unevaluated-items #:default #t]
+
+             ['not negate #:default _]
+             ['allOf (list all ...) #:default #f]
+             ['anyOf (list any ...) #:default #f]
+             ['oneOf (list one ...) #:default #f]
+
+             ['if cond #:default _]
+             ['then then #:default #t]
+             ['else else #:default #f])}
+     
+     (define check/prefix
+       (for/fold ([unevaluated null])
+                 ([item   (in-list v)]
+                  [schema (in-list prefix-items)]
+                  [index  (in-naturals)])
+         (if (json/schema? item schema)
+             unevaluated
+             (cons index unevaluated))))
+
+     (define check/items
+       (for/fold ([unevaluated check/prefix])
+                 ([item   (in-list (drop v (length prefix-items)))]
+                  [index  (in-naturals)])
+         (if (json/schema? item schema)
+             unevaluated
+             (cons index unevaluated))))
+
+     (define check/contains
+       #f)
+
+     #f]))
+
+(define (json/object? schema v)
+  #f)
+
+(define json/schema?
   (match-lambda**
     [{_ #f} #f]
     [{_ #t} #t]
@@ -160,7 +208,7 @@
     
     [{v (hash* ['not schema]
                #:closed)}
-     (not (json-is? v schema))]
+     (not (json/schema? v schema))]
     
     [{v (hash* ['const value]
                #:closed)}
@@ -168,56 +216,60 @@
     
     [{v (hash* ['allOf (list schemas ...)]
                ['unevaluatedItems unevaluated-items #:default #t]
-               ['unevaluatedProperties unevaluated-properties #:default #t]
+               ['unevaluatedProperties unevaluated-props #:default #t]
                #:rest u)}
      (parameterize ([current-unevaluated-items unevaluated-items]
-                    [current-unevaluated-properties unevaluated-properties])
+                    [current-unevaluated-properties unevaluated-props])
        (and
-        (json-is? v u)
+        (json/schema? v u)
         (for/and ([schema (in-list schemas)])
-          (json-is? v schema))))]
+          (json/schema? v schema))))]
 
     [{v (hash* ['anyOf (list schemas ...)]
                ['unevaluatedItems unevaluated-items #:default #t]
-               ['unevaluatedProperties unevaluated-properties #:default #t]
+               ['unevaluatedProperties unevaluated-props #:default #t]
                #:rest u)}
      (parameterize ([current-unevaluated-items unevaluated-items]
-                    [current-unevaluated-properties unevaluated-properties])
+                    [current-unevaluated-properties unevaluated-props])
        (and
-        (json-is? v u)
+        (json/schema? v u)
         (for/or ([schema (in-list schemas)])
-          (json-is? v schema))))]
+          (json/schema? v schema))))]
 
     [{v (hash* ['oneOf (list schemas ...)]
                ['unevaluatedItems unevaluated-items #:default #t]
-               ['unevaluatedProperties unevaluated-properties #:default #t]
+               ['unevaluatedProperties unevaluated-props #:default #t]
                #:rest u)}
      (parameterize ([current-unevaluated-items unevaluated-items]
-                    [current-unevaluated-properties unevaluated-properties])
+                    [current-unevaluated-properties unevaluated-props])
        (and
-        (json-is? v u)
+        (json/schema? v u)
         (for/fold ([count 0]
                    #:result (= 1 count))
                   ([schema (in-list schemas)]
                    #:break (< 1 count))
-          (+ count (if (json-is? v schema) 1 0)))))]
+          (+ count (if (json/schema? v schema) 1 0)))))]
+    
+    [{v (hash* ['if cond]
+               ['then then #:default #t]
+               ['else else #:default #f]
+               ['unevaluatedItems unevaluated-items #:default #t]
+               ['unevaluatedProperties unevaluated-props #:default #t]
+               #:rest u)}
+     (parameterize ([current-unevaluated-items unevaluated-items]
+                    [current-unevaluated-properties unevaluated-props])
+       (and
+        (json/schema? v u)
+        (if (json/schema? v cond)
+            (json/schema? v then)
+            (json/schema? v else))))]
 
     [{v (and (hash* ['type (list types ...)]
                     #:open)
              schema)}
      (for/or ([type (in-list (remove-duplicates types))])
-       (json-is? v (hash-set schema 'type type)))]
+       (json/schema? v (hash-set schema 'type type)))]
     
-    [{v (hash* ['if cond]
-               ['then then]
-               ['else else #:default #f]
-               #:rest u)}
-     (and
-      (json-is? v u)
-      (if (json-is? v cond)
-          (json-is? v then)
-          (json-is? v else)))]
-
     [{v (hash* ['type "null"]
                #:open)}
      (eq? (json-null) v)]
@@ -234,12 +286,12 @@
              #:open)}
      #:when (or (and type (string=? "integer" type))
                 minimum maximum multiple-of)
-     (let ([minimum (or minimum -inf.0)]
-           [maximum (or maximum +inf.0)])
-       (and
-        (<= minimum v maximum)
-        (implies multiple-of
-          (integer? (/ v multiple-of)))))]
+     (and
+      (<= (or minimum -inf.0)
+          v
+          (or maximum +inf.0))
+      (implies multiple-of
+        (integer? (/ v multiple-of))))]
 
     [{(? number? v)
       (hash* ['type type #:default #f]
@@ -249,12 +301,12 @@
              #:open)}
      #:when (or (and type (string=? "number" type))
                 minimum maximum multiple-of)
-     (let ([minimum (or minimum -inf.0)]
-           [maximum (or maximum +inf.0)])
-       (and
-        (<= minimum v maximum)
-        (implies multiple-of
-          (integer? (/ v multiple-of)))))]
+     (and
+      (<= (or minimum -inf.0)
+          v
+          (or maximum +inf.0))
+      (implies multiple-of
+        (integer? (/ v multiple-of))))]
     
     [{(? string? v)
       (hash* ['type type #:default #f]
@@ -265,14 +317,12 @@
              #:open)}
      #:when (or (and type (string=? "string" type))
                 options rx min-length max-length)
-     (let ([min-length 0]
-           [max-length +inf.0])
-       (and
-        (<= min-length (string-length v) max-length)
-        (implies options
-          (memv v options))
-        (implies rx
-          (regexp-match? (regexp rx) v))))]
+     (and
+      (<= (or min-length 0)
+          (string-length v)
+          (or max-length +inf.0))
+      (implies options (memv v options))
+      (implies rx (regexp-match? (regexp rx) v)))]
 
     [{(? list? v)
       (hash* ['type type #:default "array"]
@@ -291,15 +341,16 @@
      (define m (length prefix-items))
      (parameterize ([current-unevaluated-items #t])
        (and
+        (<= m n)
         (<= min-items n max-items)
         (implies (< 0 m)
           (implies (not items) (= m n))
           (for/and ([item (in-list v)]
                     [schema (in-list prefix-items)])
-            (json-is? item schema)))
+            (json/schema? item schema)))
         (for/and ([item (in-list (drop v m))])
-          (or (json-is? item items)
-              (json-is? item unevaluated-items)))
+          (or (json/schema? item items)
+              (json/schema? item unevaluated-items)))
         (implies (∃ contains)
           (for/fold ([count 0]
                      #:result
@@ -308,7 +359,7 @@
                          max-contains))
                     ([item (in-list v)]
                      #:break (< max-contains count)
-                     #:when (json-is? item contains))
+                     #:when (json/schema? item contains))
             (+ count 1)))
         (implies unique-items?
           (not (check-duplicates v)))))]
@@ -335,15 +386,17 @@
         (for/and ([(key v) (in-immutable-hash v)])
           (match (hash-ref props key 'not-found)
             ['not-found
-             (or (let ([key (symbol->string key)])
-                   (and pattern-props
-                        (for/or ([(pattern schema) (in-immutable-hash pattern-props)]
-                                 #:when (regexp-match? (regexp (symbol->string pattern)) key))
-                          (json-is? v schema))))
-                 (json-is? v additional-props)
-                 (json-is? v unevaluated-props))]
+             (displayln key)
+             (and
+              (implies pattern-props
+                (let ([key (symbol->string key)])
+                  (for/or ([(pattern schema) (in-immutable-hash pattern-props)]
+                           #:when (regexp-match? (regexp (symbol->string pattern)) key))
+                    (json/schema? v schema))))
+              (json/schema? v additional-props)
+              (json/schema? v unevaluated-props))]
             [schema
-             (json-is? v schema)]))
+             (json/schema? v schema)]))
         (implies dependent-required
           (for*/and ([(key deps) (in-immutable-hash dependent-required)]
                      #:when (hash-has-key? v key)
@@ -352,7 +405,7 @@
         (implies dependent-schemas
           (for/and ([(key schema) (in-immutable-hash dependent-schemas)]
                     #:when (hash-has-key? v key))
-            (json-is? v schema)))))]
+            (json/schema? v schema)))))]
     
     [{_ _} #f]))
 
@@ -385,5 +438,5 @@
            (street_address . "1600 Pennsylvania Avenue NW")
            (type . "residential")))
 
-(json-is? data₁ a-schema) ;; #true
-(json-is? data₂ a-schema) ;; #false
+(json/schema? data₁ a-schema) ;; #true
+(json/schema? data₂ a-schema) ;; #false
