@@ -46,44 +46,24 @@
       (update &eval-duration)))
 
 (define (message-parts->complete-message parts)
-  (define-values (stat contents done-reason logprobs) ;; noqa
-    (for/fold ([stat zero-stat] ;; noqa
-               [contents null]
-               [done-reason #f]
-               [logprobs #f]
-               #:result
-               (values
-                stat
-                (reverse contents)
-                done-reason
-                logprobs))
-              ([part (in-mutable-treelist parts)])
-      (values
-       (stat . stat+ . part)
-       (cons (&content part) contents)
-       (&done-reason part)
-       (&logprobs part))))
-  (~> (hasheq
-       'content (string-join contents ""))
-      (hash-set stat
-       'message _
-       'done_reason done-reason
-       'logprobs logprobs)))
+  (for/fold ([stat zero-stat] ;; noqa
+             [contents null]
+             #:result
+             (~> (string-append* (reverse contents))
+                 (hasheq 'content _)
+                 (hash-set stat 'message _)))
+            ([part (in-mutable-treelist parts)])
+    (values
+     (stat . stat+ . part)
+     (cons (&content part) contents))))
 
 (define (response-parts->complete-message parts)
   (for/fold ([stat zero-stat] ;; noqa
              [response null]
-             [done-reason #f]
-             [logprobs #f]
              #:result
-             (hash-set
-              stat
-              'response (string-join response "")
-              'done_reason done-reason
-              'logprobs logprobs))
+             (~> (string-append* (reverse response))
+                 (hash-set stat 'response _)))
             ([part (in-mutable-treelist parts)])
     (values
      (stat . stat+ . part)
-     (cons (&response part) response)
-     (&done-reason part)
-     (&logprobs part))))
+     (cons (&response part) response))))
