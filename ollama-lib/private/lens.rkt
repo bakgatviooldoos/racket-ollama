@@ -8,8 +8,8 @@
 (provide
  (all-defined-out))
 
-(define &content (&hash-ref* 'message 'content))
-(define &thinking* (&opt-hash-ref* 'message 'thinking))
+(define &message.content (&hash-ref* 'message 'content))
+(define &message.thinking (&opt-hash-ref* 'message 'thinking))
 (define &response (&hash-ref 'response))
 (define &thinking (&opt-hash-ref 'thinking))
 (define &total-duration (&opt-hash-ref 'total_duration))
@@ -55,7 +55,7 @@
             ([part (in-mutable-treelist parts)])
     (values
      (stat . stat+ . part)
-     (cons (&content part) contents))))
+     (cons (&message.content part) contents))))
 
 (define (response-parts->complete-message parts)
   (for/fold ([stat zero-stat] ;; noqa

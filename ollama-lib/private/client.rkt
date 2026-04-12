@@ -20,20 +20,20 @@
  ollama-client?
  ollama-timeouts
  ollama-generate
- ollama-load-model
- ollama-unload-model
  ollama-start-chat
+ ollama-embed
  ollama-list-models
  ollama-list-running
+ ollama-load-model
+ ollama-unload-model
  ollama-show-model
+ ollama-create-model
  ollama-copy-model
- ollama-delete-model
  ollama-pull-model
  ollama-push-model
- ollama-create-model
+ ollama-delete-model
  ollama-has-blob?
  ollama-upload-blob
- ollama-embed
  ollama-version)
 
 (define ollama-timeouts
@@ -137,7 +137,7 @@
           (lambda (data)
             (make-message
              #:role 'assistant
-             (&content data)))]
+             (&message.content data)))]
          c model str-or-messages)
   (struct-define ollama-client c)
   (let loop ([messages (ensure-messages str-or-messages)]
@@ -171,7 +171,7 @@
               (set! done? #t)
               (define complete-message
                 (message-parts->complete-message parts))
-              (unless (string=? (&content complete-message) "")
+              (unless (string=? (&message.content complete-message) "")
                 (and~>
                  (response->history-entry complete-message)
                  (mutable-treelist-add! messages _))))
