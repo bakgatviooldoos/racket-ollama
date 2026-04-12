@@ -29,6 +29,7 @@
 (define &completed (&opt-hash-ref 'completed))
 
 (define (prepend-part part more*)
+  (unless part (set! part (more*)))
   (lambda ()
     (begin0 part
       (set! part (more*)))))
@@ -69,19 +70,22 @@
         (values thinks part)
         (values (cons thinking thinks) !think))))
 
-(define-syntax-rule
-  (with-thinking [(more* thinks) more]
-    . body)
-  (let-values ([(more* thinks)
-                (extract-thinking more)])
-    . body))
+(define-syntax with-thinking
+  (syntax-rules ()
+    [(_ [(more* thinks) #:chat more]
+        . body)
+     (with-thinking [(more* thinks) more]
+       . body)]
 
-(define-syntax-rule
-  (with-thinking/generate [(more* thinks) more]
-    . body)
-  (let-values ([(more* thinks)
-                (extract-thinking more #:key &thinking)])
-    . body))
+    [(_ [(more* thinks) #:response more]
+        . body)
+     (let-values ([(more* thinks) (extract-thinking more #:key &thinking)])
+       . body)]
+
+    [(_ [(more* thinks) more]
+        . body)
+     (let-values ([(more* thinks) (extract-thinking more)])
+       . body)]))
 
 (define-syntax-rule
   (with-generate-image [(total completed) more]
