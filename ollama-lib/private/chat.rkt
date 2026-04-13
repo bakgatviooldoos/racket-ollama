@@ -117,17 +117,17 @@
         (values thinks part)
         (values (cons thinking thinks) !think))))
 
-(define (capture-message-thinking more)
+(define (capture-thinking/message more)
   (capture-thinking #:key &message.thinking))
 
-(define (capture-response-thinking more)
+(define (capture-thinking/response more)
   (capture-thinking #:key &thinking))
 
 (define-syntax with-thinking
   (syntax-rules ()
     [(_ [(more* thinks) more]
         . body)
-     (let-values ([(more* thinks) (capture-message-thinking more)])
+     (let-values ([(more* thinks) (capture-thinking/message more)])
        . body)]
 
     [(_ [(more* thinks) #:message more]
@@ -137,7 +137,7 @@
 
     [(_ [(more* thinks) #:response more]
         . body)
-     (let-values ([(more* thinks) (capture-response-thinking more)])
+     (let-values ([(more* thinks) (capture-thinking/response more)])
        . body)]))
 
 (define-syntax-rule
@@ -274,25 +274,6 @@
        #'[(label part) (in-producer
                         (->labeled-generate-response more)
                         (lambda (l p) (eof-object? p)))]])))
-
-(define (capture-tool-calls/thinking/content
-         #:with-stats? [stats? #f]
-         more)
-  (let*-values ([(calls more) (capture-tool-calls more)]
-                [(thinks more) (capture-thinking more)]
-                [(content stats) (capture-content-string/stats more)])
-    (if stats?
-        (values calls thinks content stats)
-        (values calls thinks content))))
-
-(define (capture-thinking/response
-         #:with-stats? [stats? #f]
-         more)
-  (let*-values ([(thinks more) (capture-thinking more)]
-                [(response stats) (capture-response-string/stats more)])
-    (if stats?
-        (values thinks response stats)
-        (values thinks response))))
 
 (define call-tool #f)
 
