@@ -5,7 +5,9 @@
   data/monocle
   racket/string
   threading
-  "lens.rkt")
+  "lens.rkt"
+  "tool.rkt"
+  "message.rkt")
 
 (provide
   with-ollama-chat
@@ -36,7 +38,7 @@
     (begin0 part
       (set! part (more*)))))
 
-(define (extract-tool-calls more*)
+(define (capture-tool-calls more*)
   (for/fold ([calls null]
              [!call #f]
              #:result
@@ -53,18 +55,61 @@
 (define-syntax-rule
   (with-tool-calls [(more* calls) more]
     . body)
-  (let-values ([(more* calls) (extract-tool-calls more)])
+  (let-values ([(more* calls) (capture-tool-calls more)])
     . body))
 
-(define (extract-thinking
-         #:key [&thinking &message.thinking]
-         more*)
+(define (raise-tool-not-found-error name data)
+  (raise
+   (exn:fail:tool:not-found
+    (format "tool '~a' does not exist" name)
+    (current-continuation-marks)
+    #;data data
+    #;hints '("check the tool list again and retry"))))
+
+(define ((make-toolkit . caller-map)
+         #:to-message? [to-message? #f]
+         data)
+  (define name (string->symbol (hash-ref data 'name)))
+  (cond
+    [(for/first ([caller/ids (in-list caller-map)]
+                 #:when (memq name (cdr caller/ids)))
+       (define result ((car caller/ids) data))
+       (if to-message?
+           (make-message
+            #:role 'tool
+            result)
+           result))]
+    [else
+     (raise-tool-not-found-error name data)]))
+
+;; work-in-progress, needs refinement
+(define-syntax-rule
+  (define-toolkit caller*
+    [caller (id ...)] ...)
+  (define (caller* data #:to-message? [to-message? #f])
+    (define result
+      (define name (string->symbol (hash-ref data 'name)))
+      (case name
+        [(id ...) (caller data)]
+        ...
+        [else
+         (raise-tool-not-found-error name data)]))
+    (if to-message?
+        (make-message
+         #:role 'tool
+         result)
+        result)))
+
+(define (reverse/string-append* ss)
+  (string-append* (reverse ss)))
+
+(define (capture-thinking more* #:key &thinking)
   (for/fold ([thinks null]
              [!think #f]
              #:result
              (values
               (prepend-part !think more*)
-              (string-append* (reverse thinks))))
+              (reverse/string-append* thinks)))
             ([part (in-producer more* eof)]
              #:do [(define thinking (&thinking part))]
              #:final (not thinking))
@@ -72,11 +117,17 @@
         (values thinks part)
         (values (cons thinking thinks) !think))))
 
+(define (capture-message-thinking more)
+  (capture-thinking #:key &message.thinking))
+
+(define (capture-response-thinking more)
+  (capture-thinking #:key &thinking))
+
 (define-syntax with-thinking
   (syntax-rules ()
     [(_ [(more* thinks) more]
         . body)
-     (let-values ([(more* thinks) (extract-thinking more)])
+     (let-values ([(more* thinks) (capture-message-thinking more)])
        . body)]
 
     [(_ [(more* thinks) #:message more]
@@ -86,7 +137,7 @@
 
     [(_ [(more* thinks) #:response more]
         . body)
-     (let-values ([(more* thinks) (extract-thinking more #:key &thinking)])
+     (let-values ([(more* thinks) (capture-response-thinking more)])
        . body)]))
 
 (define-syntax-rule
@@ -126,35 +177,57 @@
           [total (&total part)])
       . body)))
 
-(define (extract-content-string more)
+(define (capture-content-string more)
   (string-append*
    (for/list ([part (in-producer more eof)])
      (&message.content part))))
 
-;; this will extract stats for the message/response part of the stream but will miss
-;; those for thinking parts?
-(define (extract-content-string/stats more)
+(define (capture-content-string/stats more)
   (for/fold ([stat zero-stat] ;; noqa
              [contents null]
-             #:result (values (string-append* (reverse contents)) stat))
+             #:result (values (reverse/string-append* contents) stat))
             ([part (in-producer more eof)])
     (values
      (stat . stat+ . part)
      (cons (&message.content part) contents))))
 
-(define (extract-response-string more)
+(define (capture-response-string more)
   (string-append*
    (for/list ([part (in-producer more eof)])
      (&response part))))
 
-(define (extract-response-string/stats more)
+(define (capture-response-string/stats more)
   (for/fold ([stat zero-stat] ;; noqa
              [response null]
-             #:result (values (string-append* (reverse response)) stat))
+             #:result (values (reverse/string-append* response) stat))
             ([part (in-producer more eof)])
     (values
      (stat . stat+ . part)
      (cons (&response part) response))))
+
+(define-syntax with-content
+  (syntax-rules ()
+    [(_ [(content stats) more]
+        . body)
+     (let-values ([(content stats) (capture-content-string/stats more)])
+       . body)]
+
+    [(_ [content more]
+        . body)
+     (let-values ([(content _) (capture-content-string/stats more)])
+       . body)]))
+
+(define-syntax with-response
+  (syntax-rules ()
+    [(_ [(content stats) more]
+       . body)
+     (let-values ([(content stats) (capture-response-string/stats more)])
+       . body)]
+
+    [(_ [content more]
+       . body)
+     (let-values ([(content _) (capture-response-string/stats more)])
+       . body)]))
 
 (define (->labeled-chat-response more)
   (lambda ()
@@ -189,16 +262,38 @@
   (lambda (stx)
     (syntax-case stx ()
       [[(label part) (_ more)]
-       #'[(label part) (in-producer more (lambda (l p) (eof-object? p)))]])))
+       #'[(label part) (in-producer
+                        (->labeled-chat-response more)
+                        (lambda (l p) (eof-object? p)))]])))
 
 (define-sequence-syntax in-generate-response
   (lambda (stx) #'->labeled-generate-response)
   (lambda (stx)
     (syntax-case stx ()
       [[(label part) (_ more)]
-       #'[(label part) (in-producer more (lambda (l p) (eof-object? p)))]])))
+       #'[(label part) (in-producer
+                        (->labeled-generate-response more)
+                        (lambda (l p) (eof-object? p)))]])))
 
-(define make-message #f)
+(define (capture-tool-calls/thinking/content
+         #:with-stats? [stats? #f]
+         more)
+  (let*-values ([(calls more) (capture-tool-calls more)]
+                [(thinks more) (capture-thinking more)]
+                [(content stats) (capture-content-string/stats more)])
+    (if stats?
+        (values calls thinks content stats)
+        (values calls thinks content))))
+
+(define (capture-thinking/response
+         #:with-stats? [stats? #f]
+         more)
+  (let*-values ([(thinks more) (capture-thinking more)]
+                [(response stats) (capture-response-string/stats more)])
+    (if stats?
+        (values thinks response stats)
+        (values thinks response))))
+
 (define call-tool #f)
 
 (with-ollama-chat [(more continue) 'start]
@@ -206,9 +301,10 @@
     (cond
       [(null? calls)
        (with-thinking [(more thinks) more]
-         (displayln thinks)
-         (displayln (extract-content-string more))
-         (continue "more, more!"))]
+         (with-content [content more]
+           (displayln (format "thinking: ~a" thinks))
+           (displayln (format "contents: ~a" content))
+           (continue "more, more!")))]
       [else
        (continue
         (for/list ([data (in-list calls)])
