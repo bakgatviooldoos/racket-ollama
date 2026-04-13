@@ -3,7 +3,9 @@
 (require
   (for-syntax racket/base)
   data/monocle
-  racket/string)
+  racket/string
+  threading
+  "lens.rkt")
 
 (provide
   with-ollama-chat
@@ -72,7 +74,12 @@
 
 (define-syntax with-thinking
   (syntax-rules ()
-    [(_ [(more* thinks) #:chat more]
+    [(_ [(more* thinks) more]
+        . body)
+     (let-values ([(more* thinks) (extract-thinking more)])
+       . body)]
+
+    [(_ [(more* thinks) #:message more]
         . body)
      (with-thinking [(more* thinks) more]
        . body)]
@@ -80,11 +87,6 @@
     [(_ [(more* thinks) #:response more]
         . body)
      (let-values ([(more* thinks) (extract-thinking more #:key &thinking)])
-       . body)]
-
-    [(_ [(more* thinks) more]
-        . body)
-     (let-values ([(more* thinks) (extract-thinking more)])
        . body)]))
 
 (define-syntax-rule
@@ -129,10 +131,30 @@
    (for/list ([part (in-producer more eof)])
      (&message.content part))))
 
+;; this will extract stats for the message/response part of the stream but will miss
+;; those for thinking parts?
+(define (extract-content-string/stats more)
+  (for/fold ([stat zero-stat] ;; noqa
+             [contents null]
+             #:result (values (string-append* (reverse contents)) stat))
+            ([part (in-producer more eof)])
+    (values
+     (stat . stat+ . part)
+     (cons (&message.content part) contents))))
+
 (define (extract-response-string more)
   (string-append*
    (for/list ([part (in-producer more eof)])
      (&response part))))
+
+(define (extract-response-string/stats more)
+  (for/fold ([stat zero-stat] ;; noqa
+             [response null]
+             #:result (values (string-append* (reverse response)) stat))
+            ([part (in-producer more eof)])
+    (values
+     (stat . stat+ . part)
+     (cons (&response part) response))))
 
 (define (->labeled-chat-response more)
   (lambda ()
