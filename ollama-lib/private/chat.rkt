@@ -66,6 +66,12 @@
     #;data data
     #;hints '("check the tool list again and retry"))))
 
+;; toolkit:
+;; way to manage the tools available to the model at any given point in the chat
+;; maybe provide a way to combine/filter tools from different tool-definers
+;; maybe provide a caller which accepts tool-calls from this 'toolkit'
+
+;; work-in-progress, needs refinement
 (define ((make-toolkit . caller-map)
          #:to-message? [to-message? #f]
          data)
@@ -117,17 +123,17 @@
         (values thinks part)
         (values (cons thinking thinks) !think))))
 
-(define (capture-thinking/message more)
+(define (capture-thinking-from-message more)
   (capture-thinking #:key &message.thinking))
 
-(define (capture-thinking/response more)
+(define (capture-thinking-from-response more)
   (capture-thinking #:key &thinking))
 
 (define-syntax with-thinking
   (syntax-rules ()
     [(_ [(more* thinks) more]
         . body)
-     (let-values ([(more* thinks) (capture-thinking/message more)])
+     (let-values ([(more* thinks) (capture-thinking-from-message more)])
        . body)]
 
     [(_ [(more* thinks) #:message more]
@@ -137,7 +143,7 @@
 
     [(_ [(more* thinks) #:response more]
         . body)
-     (let-values ([(more* thinks) (capture-thinking/response more)])
+     (let-values ([(more* thinks) (capture-thinking-from-response more)])
        . body)]))
 
 (define-syntax-rule
@@ -229,6 +235,48 @@
      (let-values ([(content _) (capture-response-string/stats more)])
        . body)]))
 
+(define-syntax with-thinking/content
+  (syntax-rules ()
+    [(_ [(thinks content stats) more]
+        . body)
+     (with-thinking [(more thinks) more]
+       (with-content [(content stats) more]
+         . body))]
+
+    [(_ [(thinks content) more]
+        . body)
+     (with-thinking [(more thinks) more]
+       (with-content [content more]
+         . body))]))
+
+(define-syntax with-tool-calls/thinking/content
+  (syntax-rules ()
+    [(_ [(calls thinks content stats) more]
+        . body)
+     (with-tool-calls [(more calls) more]
+       (with-thinking/content [(thinks content stats) more]
+         . body))]
+
+    [(_ [(thinks content) more]
+        . body)
+     (with-tool-calls [(more calls) more]
+       (with-thinking/content [(thinks content) more]
+         . body))]))
+
+(define-syntax with-thinking/response
+  (syntax-rules ()
+    [(_ [(thinks content stats) more]
+        . body)
+     (with-thinking [(more thinks) more]
+       (with-response [(content stats) more]
+         . body))]
+    
+    [(_ [(thinks content) more]
+        . body)
+     (with-thinking [(more thinks) more]
+       (with-response [content more]
+         . body))]))
+
 (define (->labeled-chat-response more)
   (lambda ()
     (let ([part (more)])
@@ -253,11 +301,11 @@
         [(&thinking part)
          (values 'thinking part)]
         [(non-empty-string? (&response part))
-         (values 'content part)]
+         (values 'response part)]
         [else
          (values 'done part)]))))
 
-(define-sequence-syntax in-chat-response
+(define-sequence-syntax in-producer/message
   (lambda (stx) #'->labeled-chat-response)
   (lambda (stx)
     (syntax-case stx ()
@@ -266,7 +314,7 @@
                         (->labeled-chat-response more)
                         (lambda (l p) (eof-object? p)))]])))
 
-(define-sequence-syntax in-generate-response
+(define-sequence-syntax in-producer/response
   (lambda (stx) #'->labeled-generate-response)
   (lambda (stx)
     (syntax-case stx ()
@@ -281,11 +329,10 @@
   (with-tool-calls [(more calls) more]
     (cond
       [(null? calls)
-       (with-thinking [(more thinks) more]
-         (with-content [content more]
-           (displayln (format "thinking: ~a" thinks))
-           (displayln (format "contents: ~a" content))
-           (continue "more, more!")))]
+       (with-thinking/content [(thinks content) more]
+         (displayln (format "thinking: ~a" thinks))
+         (displayln (format "contents: ~a" content))
+         (continue "more, more!"))]
       [else
        (continue
         (for/list ([data (in-list calls)])
