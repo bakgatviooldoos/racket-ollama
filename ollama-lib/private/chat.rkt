@@ -32,31 +32,43 @@
 (define &total (&opt-hash-ref 'total))
 (define &completed (&opt-hash-ref 'completed))
 
-(define (prepend-part part more*)
-  (unless part (set! part (more*)))
+(define (prepend-part part more)
+  (unless part (set! part (more)))
   (lambda ()
     (begin0 part
-      (set! part (more*)))))
+      (set! part (more)))))
 
-(define (capture-tool-calls more*)
+(define (capture-tool-calls more)
   (for/fold ([calls null]
              [!call #f]
              #:result
              (values
-              (prepend-part !call more*)
+              (prepend-part !call more)
               (reverse calls)))
-            ([part (in-producer more* eof)]
+            ([part (in-producer more eof)]
              #:do [(define tools (&message.tool-calls part))]
              #:final (not tools))
     (if (not tools)
         (values calls part)
         (values (append calls tools) !call))))
 
-(define-syntax-rule
-  (with-tool-calls [(more* calls) more]
-    . body)
-  (let-values ([(more* calls) (capture-tool-calls more)])
-    . body))
+(define (capture-tool-calls/stats more)
+  (let-values ([(more calls) (capture-tool-calls more)])
+    (if (null? calls)
+        (values more calls #f)
+        (values more calls (more)))))
+
+(define-syntax with-tool-calls
+  (syntax-rules ()
+    [(_ [(more* calls) more]
+        . body)
+     (let-values ([(more* calls) (capture-tool-calls more)])
+       . body)]
+
+    [(_ [(more* calls stats) more]
+        . body)
+     (let-values ([(more* calls stats) (capture-tool-calls/stats more)])
+       . body)]))
 
 (define (raise-tool-not-found-error name data)
   (raise
@@ -109,14 +121,14 @@
 (define (reverse/string-append* ss)
   (string-append* (reverse ss)))
 
-(define (capture-thinking more* #:key &thinking)
+(define (capture-thinking more #:key &thinking)
   (for/fold ([thinks null]
              [!think #f]
              #:result
              (values
-              (prepend-part !think more*)
+              (prepend-part !think more)
               (reverse/string-append* thinks)))
-            ([part (in-producer more* eof)]
+            ([part (in-producer more eof)]
              #:do [(define thinking (&thinking part))]
              #:final (not thinking))
     (if (not thinking)
