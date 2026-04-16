@@ -4,9 +4,7 @@
   (for-syntax racket/base)
   data/monocle
   racket/string
-  threading
   "lens.rkt"
-  "tool.rkt"
   "message.rkt")
 
 (provide
