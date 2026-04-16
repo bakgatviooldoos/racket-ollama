@@ -10,8 +10,28 @@
   "message.rkt")
 
 (provide
+  capture-tool-calls
+  capture-tool-calls+stats
+  capture-thinking/message
+  capture-thinking/response
+  capture-content
+  capture-content+stats
+  capture-response
+  capture-response+stats
+  in-producer/message
+  in-producer/response
   with-ollama-chat
-  with-tool-calls)
+  with-content
+  with-response
+  with-thinking
+  with-tool-calls
+  with-thinking+content
+  with-thinking+response
+  with-tool-calls+thinking+content
+  with-generate-image
+  with-create-model
+  with-pull-model
+  with-push-model)
 
 (define-syntax-rule
   (with-ollama-chat [(more continue) start-chat]
@@ -52,7 +72,7 @@
         (values calls part)
         (values (append calls tools) !call))))
 
-(define (capture-tool-calls/stats more)
+(define (capture-tool-calls+stats more)
   (let-values ([(more calls) (capture-tool-calls more)])
     (if (null? calls)
         (values more calls #f)
@@ -67,56 +87,8 @@
 
     [(_ [(more* calls stats) more]
         . body)
-     (let-values ([(more* calls stats) (capture-tool-calls/stats more)])
+     (let-values ([(more* calls stats) (capture-tool-calls+stats more)])
        . body)]))
-
-(define (raise-tool-not-found-error name data)
-  (raise
-   (exn:fail:tool:not-found
-    (format "tool '~a' does not exist" name)
-    (current-continuation-marks)
-    #;data data
-    #;hints '("check the tool list again and retry"))))
-
-;; toolkit:
-;; way to manage the tools available to the model at any given point in the chat
-;; maybe provide a way to combine/filter tools from different tool-definers
-;; maybe provide a caller which accepts tool-calls from this 'toolkit'
-
-;; work-in-progress, needs refinement
-(define ((make-toolkit . caller-map)
-         #:to-message? [to-message? #f]
-         data)
-  (define name (string->symbol (hash-ref data 'name)))
-  (cond
-    [(for/first ([caller/ids (in-list caller-map)]
-                 #:when (memq name (cdr caller/ids)))
-       (define result ((car caller/ids) data))
-       (if to-message?
-           (make-message
-            #:role 'tool
-            result)
-           result))]
-    [else
-     (raise-tool-not-found-error name data)]))
-
-;; work-in-progress, needs refinement
-(define-syntax-rule
-  (define-toolkit caller*
-    [caller (id ...)] ...)
-  (define (caller* data #:to-message? [to-message? #f])
-    (define result
-      (define name (string->symbol (hash-ref data 'name)))
-      (case name
-        [(id ...) (caller data)]
-        ...
-        [else
-         (raise-tool-not-found-error name data)]))
-    (if to-message?
-        (make-message
-         #:role 'tool
-         result)
-        result)))
 
 (define (reverse/string-append* ss)
   (string-append* (reverse ss)))
@@ -135,17 +107,17 @@
         (values thinks part)
         (values (cons thinking thinks) !think))))
 
-(define (capture-thinking-from-message more)
+(define (capture-thinking/message more)
   (capture-thinking #:key &message.thinking))
 
-(define (capture-thinking-from-response more)
+(define (capture-thinking/response more)
   (capture-thinking #:key &thinking))
 
 (define-syntax with-thinking
   (syntax-rules ()
     [(_ [(more* thinks) more]
         . body)
-     (let-values ([(more* thinks) (capture-thinking-from-message more)])
+     (let-values ([(more* thinks) (capture-thinking/message more)])
        . body)]
 
     [(_ [(more* thinks) #:message more]
@@ -155,7 +127,7 @@
 
     [(_ [(more* thinks) #:response more]
         . body)
-     (let-values ([(more* thinks) (capture-thinking-from-response more)])
+     (let-values ([(more* thinks) (capture-thinking/response more)])
        . body)]))
 
 (define-syntax-rule
@@ -195,59 +167,57 @@
           [total (&total part)])
       . body)))
 
-(define (capture-content-string more)
+(define (capture-text more #:key &text)
   (string-append*
    (for/list ([part (in-producer more eof)])
-     (&message.content part))))
+     (&text part))))
 
-(define (capture-content-string/stats more)
+(define (capture-text+stats more #:key &text)
   (for/fold ([stat zero-stat] ;; noqa
              [contents null]
              #:result (values (reverse/string-append* contents) stat))
             ([part (in-producer more eof)])
     (values
      (stat . stat+ . part)
-     (cons (&message.content part) contents))))
+     (cons (&text part) contents))))
 
-(define (capture-response-string more)
-  (string-append*
-   (for/list ([part (in-producer more eof)])
-     (&response part))))
+(define (capture-content more)
+  (capture-text more #:key &message.content))
 
-(define (capture-response-string/stats more)
-  (for/fold ([stat zero-stat] ;; noqa
-             [response null]
-             #:result (values (reverse/string-append* response) stat))
-            ([part (in-producer more eof)])
-    (values
-     (stat . stat+ . part)
-     (cons (&response part) response))))
+(define (capture-content+stats more)
+  (capture-text+stats more #:key &message.content))
+
+(define (capture-response more)
+  (capture-text more #:key &response))
+
+(define (capture-response+stats more)
+  (capture-text+stats more #:key &response))
 
 (define-syntax with-content
   (syntax-rules ()
     [(_ [(content stats) more]
         . body)
-     (let-values ([(content stats) (capture-content-string/stats more)])
+     (let-values ([(content stats) (capture-content+stats more)])
        . body)]
 
     [(_ [content more]
         . body)
-     (let-values ([(content _) (capture-content-string/stats more)])
+     (let-values ([(content _) (capture-content+stats more)])
        . body)]))
 
 (define-syntax with-response
   (syntax-rules ()
     [(_ [(content stats) more]
        . body)
-     (let-values ([(content stats) (capture-response-string/stats more)])
+     (let-values ([(content stats) (capture-response+stats more)])
        . body)]
 
     [(_ [content more]
        . body)
-     (let-values ([(content _) (capture-response-string/stats more)])
+     (let-values ([(content _) (capture-response+stats more)])
        . body)]))
 
-(define-syntax with-thinking/content
+(define-syntax with-thinking+content
   (syntax-rules ()
     [(_ [(thinks content stats) more]
         . body)
@@ -261,21 +231,21 @@
        (with-content [content more]
          . body))]))
 
-(define-syntax with-tool-calls/thinking/content
+(define-syntax with-tool-calls+thinking+content
   (syntax-rules ()
     [(_ [(calls thinks content stats) more]
         . body)
      (with-tool-calls [(more calls) more]
-       (with-thinking/content [(thinks content stats) more]
+       (with-thinking+content [(thinks content stats) more]
          . body))]
 
     [(_ [(thinks content) more]
         . body)
      (with-tool-calls [(more calls) more]
-       (with-thinking/content [(thinks content) more]
+       (with-thinking+content [(thinks content) more]
          . body))]))
 
-(define-syntax with-thinking/response
+(define-syntax with-thinking+response
   (syntax-rules ()
     [(_ [(thinks content stats) more]
         . body)
@@ -289,7 +259,7 @@
        (with-response [content more]
          . body))]))
 
-(define (->labeled-chat-response more)
+(define (->labeled-producer/message more)
   (lambda ()
     (let ([part (more)])
       (cond
@@ -304,7 +274,7 @@
         [else
          (values 'done part)]))))
 
-(define (->labeled-generate-response more)
+(define (->labeled-producer/response more)
   (lambda ()
     (let ([part (more)])
       (cond
@@ -318,21 +288,21 @@
          (values 'done part)]))))
 
 (define-sequence-syntax in-producer/message
-  (lambda (stx) #'->labeled-chat-response)
+  (lambda (stx) #'->labeled-producer/message)
   (lambda (stx)
     (syntax-case stx ()
       [[(label part) (_ more)]
        #'[(label part) (in-producer
-                        (->labeled-chat-response more)
+                        (->labeled-producer/message more)
                         (lambda (l p) (eof-object? p)))]])))
 
 (define-sequence-syntax in-producer/response
-  (lambda (stx) #'->labeled-generate-response)
+  (lambda (stx) #'->labeled-producer/response)
   (lambda (stx)
     (syntax-case stx ()
       [[(label part) (_ more)]
        #'[(label part) (in-producer
-                        (->labeled-generate-response more)
+                        (->labeled-producer/response more)
                         (lambda (l p) (eof-object? p)))]])))
 
 (define call-tool #f)
@@ -341,7 +311,7 @@
   (with-tool-calls [(more calls) more]
     (cond
       [(null? calls)
-       (with-thinking/content [(thinks content) more]
+       (with-thinking+content [(thinks content) more]
          (displayln (format "thinking: ~a" thinks))
          (displayln (format "contents: ~a" content))
          (continue "more, more!"))]
