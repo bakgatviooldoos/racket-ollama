@@ -45,7 +45,16 @@
       (update &eval-count)
       (update &eval-duration)))
 
-(define (message-parts->complete-message parts)
+;; the ollama documentation says that streaming responses
+;; only return their stats on the final chunk (part)
+
+;; https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-completion
+;; ... The final response object will include statistics and additional data from the request.
+;; ...
+
+;; I think this may have changed from some point in the past
+;; but the repeated application of stat+ is no longer necessary 
+(define (parts->complete-message parts)
   (for/fold ([stat zero-stat] ;; noqa
              [contents null]
              #:result
@@ -53,17 +62,15 @@
                  (hasheq 'content _)
                  (hash-set stat 'message _)))
             ([part (in-mutable-treelist parts)])
-    (values
-     (stat . stat+ . part)
-     (cons (&message.content part) contents))))
+    (define content (&message.content part))
+    (values part (cons content contents))))
 
-(define (response-parts->complete-message parts)
+(define (parts->complete-response parts)
   (for/fold ([stat zero-stat] ;; noqa
-             [response null]
+             [responses null]
              #:result
-             (~> (string-append* (reverse response))
+             (~> (string-append* (reverse responses))
                  (hash-set stat 'response _)))
             ([part (in-mutable-treelist parts)])
-    (values
-     (stat . stat+ . part)
-     (cons (&response part) response))))
+    (define response (&response part))
+    (values part (cons response responses))))

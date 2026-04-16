@@ -86,21 +86,21 @@
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "generate"))
         (check-response 'ollama-generate _)))
-  (let ([done? #f]
-        [parts (mutable-treelist)])
+  (let ([parts (mutable-treelist)]
+        [inp (response-output resp)])
     (lambda ()
-      (define data (read-json (response-output resp)))
       (cond
-        [(eof-object? data)
-         (unless done?
-           (set! done? #t)
-           (response->
-            (response-parts->complete-message parts)))
-         (begin0 eof
-           (response-close! resp))]
+        [(port-closed? inp) eof]
         [else
+         (define data (read-json resp))
          (begin0 data
-           (mutable-treelist-add! parts data))]))))
+           (cond
+             [(eof-object? data)
+              (response->
+               (parts->complete-message parts))
+              (response-close! resp)]
+             [else
+              (mutable-treelist-add! parts data)]))]))))
 
 ;; IMAGES (EXPERIMENTAL)
 (define (ollama-generate-image
@@ -143,8 +143,6 @@
   (let loop ([messages (ensure-messages str-or-messages)]
              [output-format output-format]
              [tools tools])
-    (define done? #f)
-    (define parts (mutable-treelist))
     (define resp
       (~> (session-request
            #:method 'post
@@ -161,25 +159,29 @@
            #:timeouts (ollama-timeouts)
            session (~endpoint "api" "chat"))
           (check-response 'ollama-chat _)))
-    (let ([messages (treelist-copy messages)])
+    (let ([messages (treelist-copy messages)]
+          [parts (mutable-treelist)]
+          [inp (response-output resp)])
       (values
        (lambda ()
-         (define data (read-json (response-output resp)))
          (cond
-           [(eof-object? data)
-            (unless done?
-              (set! done? #t)
-              (define complete-message
-                (message-parts->complete-message parts))
-              (unless (string=? (&message.content complete-message) "")
-                (and~>
-                 (response->history-entry complete-message)
-                 (mutable-treelist-add! messages _))))
-            (begin0 eof
-              (response-close! resp))]
+           [(port-closed? inp) eof]
            [else
+            (define data (read-json resp))
             (begin0 data
-              (mutable-treelist-add! parts data))]))
+              (cond
+                [(eof-object? data)
+                 (define complete-message
+                   (parts->complete-message parts))
+                 (and~>
+                  (&message.content complete-message)
+                  (non-empty-string? _)
+                  (and _ complete-message)
+                  (response->history-entry _)
+                  (mutable-treelist-add! messages _))
+                 (response-close! resp)]
+                [else
+                 (mutable-treelist-add! parts data)]))]))
        (lambda (#:format [output-format output-format] ;; noqa
                 #:tools [tools tools] ;; noqa
                 next-message)
@@ -419,11 +421,13 @@
       (response-json resp)
       (let ([inp (response-output resp)])
         (lambda ()
-          (define data (read-json inp))
-          (if (not (eof-object? data))
-              data
-              (begin0 eof
-                (response-close! resp)))))))
+          (cond
+            [(port-closed? inp) eof]
+            [else
+             (define data (read-json inp))
+             (begin0 data
+               (when (eof-object? data)
+                 (response-close! resp)))])))))
 
 ;; FILE-BLOB HELPERS
 (define (->port data [dup? #f])
