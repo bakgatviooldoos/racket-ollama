@@ -92,7 +92,7 @@
       (cond
         [(port-closed? inp) eof]
         [else
-         (define data (read-json resp))
+         (define data (read-json inp))
          (begin0 data
            (cond
              [(eof-object? data)
@@ -167,7 +167,7 @@
          (cond
            [(port-closed? inp) eof]
            [else
-            (define data (read-json resp))
+            (define data (read-json inp))
             (begin0 data
               (cond
                 [(eof-object? data)
