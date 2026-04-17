@@ -117,7 +117,7 @@
        #:auth auth
        #:json ((json-options)
                'model model
-               'stream #t
+               'stream stream?
                'prompt user-prompt
                'width width
                'height height
