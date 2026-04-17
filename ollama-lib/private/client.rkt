@@ -17,6 +17,7 @@
 
 (provide
  make-ollama-client
+ make-ollama-options
  ollama-client?
  ollama-timeouts
  ollama-generate
@@ -189,6 +190,25 @@
              (mutable-treelist-append! messages (ensure-messages next-message))
              (mutable-treelist-add! messages (ensure-message next-message)))
          (loop (mutable-treelist-snapshot messages) output-format tools))))))
+
+(define (make-ollama-options
+         #:seed [seed (json-null)]
+         #:temperature [temperature (json-null)]
+         #:top-k [top-k (json-null)]
+         #:top-p [top-p (json-null)]
+         #:min-p [min-p (json-null)]
+         #:stop [stop (json-null)]
+         #:num-ctx [num-ctx (json-null)]
+         #:num-predict [num-predict (json-null)])
+  ((json-options)
+   'seed seed
+   'temperature temperature
+   'top_k top-k
+   'top_p top-p
+   'min_p min-p
+   'stop stop
+   'num_ctx num-ctx
+   'num_predict num-predict))
 
 ;; EMBEDDINGS
 (define (ollama-embed
@@ -370,7 +390,7 @@
        #:method 'head
        #:auth auth
        #:timeouts (ollama-timeouts)
-       session (~endpoint "api" "blobs" (format "sha256:~a" sha256)))
+       session (~endpoint "api" "blobs" (~sha256 sha256)))
       (check-response 'ollama-has-blob? _ '(200 404))
       (response-status-code)
       (= 200)))
@@ -385,7 +405,7 @@
          #:auth auth
          #:data (->port data)
          #:timeouts (ollama-timeouts)
-         session (~endpoint "api" "blobs" (format "sha256:~a" sha256)))
+         session (~endpoint "api" "blobs" (~sha256 sha256)))
         (check-response 'ollama-upload-blob _ '(201))
         (and sha256))))
 
@@ -430,6 +450,8 @@
                  (response-close! resp)))])))))
 
 ;; FILE-BLOB HELPERS
+(define (~sha256 hash) (format "sha256:~a" hash))
+
 (define (->port data [dup? #f])
   (cond
     [(bytes? data)
