@@ -44,7 +44,18 @@
         (values
          chat-response/c
          chat-continuation/c))]
-
+  [make-ollama-options
+   (->* []
+        [#:seed (or-json-null/c integer?)
+         #:temperature (or-json-null/c real?)
+         #:top-k (or-json-null/c natural-number/c)
+         #:top-p (or-json-null/c real?)
+         #:min-p (or-json-null/c real?)
+         #:stop (or-json-null/c string? (listof string?))
+         #:num-ctx (or-json-null/c natural-number/c)
+         #:num-predict (or-json-null/c natural-number/c)]
+        jsexpr?)]
+  
   [ollama-embed
    (->* [ollama-client? string? (or/c string? (listof string?))]
         [#:truncate? (or-json-null/c boolean?)
