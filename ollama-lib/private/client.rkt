@@ -106,7 +106,6 @@
          #:width width
          #:height height
          #:steps [steps (json-null)]
-         #:stream? [stream? #t]
          c model user-prompt)
   (struct-define ollama-client c)
   (~> (session-request
@@ -114,8 +113,8 @@
        #:stream? #t
        #:auth auth
        #:json ((json-options)
+               'stream #t
                'model model
-               'stream stream?
                'prompt user-prompt
                'width width
                'height height
@@ -286,7 +285,6 @@
          #:system [system (json-null)]
          #:parameters [parameters (json-null)]
          #:messages [messages (json-null)]
-         #:stream? [stream? #t]
          #:quantize [quantize (json-null)]
          c model)
   (struct-define ollama-client c)
@@ -296,10 +294,10 @@
          #:stream? #t
          #:auth auth
          #:json ((json-options)
+                 'stream #t
                  'model model
                  'from from
                  'files files
-                 'stream stream?
                  'adapters adapters
                  'template template
                  'license license
@@ -327,7 +325,6 @@
 
 (define (ollama-pull-model
          #:insecure? [insecure? (json-null)]
-         #:stream? [stream? #t]
          c model)
   (struct-define ollama-client c)
   (~> (session-request
@@ -335,9 +332,9 @@
        #:stream? #t
        #:auth auth
        #:json ((json-options)
+               'stream #t
                'model model
-               'insecure insecure?
-               'stream stream?)
+               'insecure insecure?)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "pull"))
       (check-response 'ollama-pull-model _)
@@ -345,7 +342,6 @@
 
 (define (ollama-push-model
          #:insecure? [insecure? (json-null)]
-         #:stream? [stream? #t]
          c model)
   (struct-define ollama-client c)
   (~> (session-request
@@ -353,9 +349,9 @@
        #:stream? #t
        #:auth auth
        #:json ((json-options)
+               'stream #t
                'model model
-               'insecure insecure?
-               'stream stream?)
+               'insecure insecure?)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "push"))
       (check-response 'ollama-push-model _)

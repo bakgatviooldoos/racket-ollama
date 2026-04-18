@@ -97,7 +97,6 @@
          #:system (or-json-null/c string?)
          #:parameters (or-json-null/c jsexpr-hash/c)
          #:messages (or-json-null/c chat-message*/c)
-         #:stream? boolean?
          #:quantize (or-json-null/c quantize/c)]
         response-stream/c)]
   [ollama-copy-model
@@ -105,13 +104,11 @@
        any)]
   [ollama-pull-model
    (->* [ollama-client? string?]
-        [#:insecure? (or-json-null/c boolean?)
-         #:stream? boolean?]
+        [#:insecure? (or-json-null/c boolean?)]
         response-stream/c)]
   [ollama-push-model
    (->* [ollama-client? string?]
-        [#:insecure? (or-json-null/c boolean?)
-         #:stream? boolean?]
+        [#:insecure? (or-json-null/c boolean?)]
         response-stream/c)]
   [ollama-delete-model
    (-> ollama-client? string?
