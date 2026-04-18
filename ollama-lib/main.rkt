@@ -98,18 +98,18 @@
          #:parameters (or-json-null/c jsexpr-hash/c)
          #:messages (or-json-null/c chat-message*/c)
          #:quantize (or-json-null/c quantize/c)]
-        response-stream/c)]
+        response-producer/c)]
   [ollama-copy-model
    (-> ollama-client? string? string?
        any)]
   [ollama-pull-model
    (->* [ollama-client? string?]
         [#:insecure? (or-json-null/c boolean?)]
-        response-stream/c)]
+        response-producer/c)]
   [ollama-push-model
    (->* [ollama-client? string?]
         [#:insecure? (or-json-null/c boolean?)]
-        response-stream/c)]
+        response-producer/c)]
   [ollama-delete-model
    (-> ollama-client? string?
        any)]
@@ -161,10 +161,10 @@
 (define chat-message*/c
   (or/c string? message? (listof (or/c string? message?))))
 
-(define response-stream/c
+(define response-producer/c
   (-> (or/c jsexpr? eof-object?)))
 
-(define chat-response/c response-stream/c)
+(define chat-response/c response-producer/c)
 
 (define chat-continuation/c
   (->* [chat-message*/c]
