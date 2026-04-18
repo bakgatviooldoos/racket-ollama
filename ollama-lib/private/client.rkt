@@ -64,6 +64,8 @@
          #:raw? [raw? (json-null)]
          #:keep-alive [keep-alive (json-null)]
          #:options [options (json-null)]
+         #:logprobs? [logprobs? (json-null)]
+         #:top-logprobs [top-logprobs (json-null)]
          #:response-> [response-> void]
          c model [user-prompt (json-null)])
   (struct-define ollama-client c)
@@ -73,35 +75,31 @@
          #:stream? #t
          #:auth auth
          #:json ((json-options)
-                 'model model
                  'stream #t
+                 'model model
                  'prompt user-prompt
-                 'suffix suffix
-                 'images (map bytes->string/utf-8 images)
                  'system system-prompt
-                 'options options
+                 'suffix suffix
                  'think (.? think? ->jsexpr)
+                 'format (.? output-format ->jsexpr)
+                 'images (map bytes->string/utf-8 images)
                  'raw raw?
                  'keep_alive keep-alive
-                 'format (.? output-format ->jsexpr))
+                 'options options
+                 'logprobs logprobs?
+                 'top_logprobs top-logprobs)
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "generate"))
         (check-response 'ollama-generate _)))
   (let ([parts (mutable-treelist)]
-        [inp (response-output resp)])
+        [more* (->producer resp)])
     (lambda ()
-      (cond
-        [(port-closed? inp) eof]
-        [else
-         (define data (read-json inp))
-         (begin0 data
-           (cond
-             [(eof-object? data)
-              (response->
-               (parts->complete-message parts))
-              (response-close! resp)]
-             [else
-              (mutable-treelist-add! parts data)]))]))))
+      (define data (more*))
+      (begin0 data
+        (if (eof-object? data)
+            (response->
+             (parts->complete-message parts))
+            (mutable-treelist-add! parts data))))))
 
 ;; IMAGES (EXPERIMENTAL)
 (define (ollama-generate-image
@@ -125,7 +123,7 @@
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "generate"))
       (check-response 'ollama-generate-image _)
-      (stream-when stream?)))
+      (->producer)))
 
 ;; CHAT
 (define (ollama-start-chat
@@ -133,6 +131,9 @@
          #:format [output-format (json-null)]
          #:think? [think? (json-null)]
          #:tools [tools (json-null)]
+         #:keep-alive [keep-alive (json-null)]
+         #:logprobs? [logprobs? (json-null)]
+         #:top-logprobs [top-logprobs (json-null)]
          #:response->history-entry
          [response->history-entry
           (lambda (data)
@@ -150,39 +151,38 @@
            #:stream? #t
            #:auth auth
            #:json ((json-options)
-                   'model model
                    'stream #t
+                   'model model
                    'options options
+                   'keep_alive keep-alive
                    'messages (->jsexpr messages)
-                   'think (.? think? ->jsexpr)
                    'tools (.? tools hash-values->jsexpr)
-                   'format (.? output-format ->jsexpr))
+                   'think (.? think? ->jsexpr)
+                   'format (.? output-format ->jsexpr)
+                   'logprobs logprobs?
+                   'top_logprobs top-logprobs)
            #:timeouts (ollama-timeouts)
            session (~endpoint "api" "chat"))
           (check-response 'ollama-chat _)))
     (let ([messages (treelist-copy messages)]
           [parts (mutable-treelist)]
-          [inp (response-output resp)])
+          [more* (->producer resp)])
       (values
        (lambda ()
-         (cond
-           [(port-closed? inp) eof]
-           [else
-            (define data (read-json inp))
-            (begin0 data
-              (cond
-                [(eof-object? data)
-                 (define complete-message
-                   (parts->complete-message parts))
-                 (and~>
-                  (&message.content complete-message)
-                  (non-empty-string? _)
-                  (and _ complete-message)
-                  (response->history-entry _)
-                  (mutable-treelist-add! messages _))
-                 (response-close! resp)]
-                [else
-                 (mutable-treelist-add! parts data)]))]))
+         (define data (more*))
+         (begin0 data
+           (cond
+             [(eof-object? data)
+              (define complete-message
+                (parts->complete-message parts))
+              (and~>
+               (&message.content complete-message)
+               (non-empty-string? _)
+               (and _ complete-message)
+               (response->history-entry _)
+               (mutable-treelist-add! messages _))]
+             [else
+              (mutable-treelist-add! parts data)])))
        (lambda (#:format [output-format output-format] ;; noqa
                 #:tools [tools tools] ;; noqa
                 next-message)
@@ -310,7 +310,7 @@
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "create"))
         (check-response 'ollama-create-model _)
-        (stream-when stream?))))
+        (->producer))))
 
 (define (ollama-copy-model c model destination)
   (struct-define ollama-client c)
@@ -341,7 +341,7 @@
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "pull"))
       (check-response 'ollama-pull-model _)
-      (stream-when stream?)))
+      (->producer)))
 
 (define (ollama-push-model
          #:insecure? [insecure? (json-null)]
@@ -359,7 +359,7 @@
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "push"))
       (check-response 'ollama-push-model _)
-      (stream-when stream?)))
+      (->producer)))
 
 (define (ollama-delete-model c model)
   (struct-define ollama-client c)
@@ -436,18 +436,16 @@
              (response-status-code resp)
              (response-body resp)))))
 
-(define (stream-when resp stream?)
-  (if (not stream?)
-      (response-json resp)
-      (let ([inp (response-output resp)])
-        (lambda ()
-          (cond
-            [(port-closed? inp) eof]
-            [else
-             (define data (read-json inp))
-             (begin0 data
-               (when (eof-object? data)
-                 (response-close! resp)))])))))
+(define (->producer resp)
+  (let ([inp (response-output resp)])
+    (lambda ()
+      (cond
+        [(port-closed? inp) eof]
+        [else
+         (define data (read-json inp))
+         (begin0 data
+           (when (eof-object? data)
+             (response-close! resp)))]))))
 
 ;; FILE-BLOB HELPERS
 (define (~sha256 hash) (format "sha256:~a" hash))

@@ -20,6 +20,10 @@
 (define &eval-duration (&opt-hash-ref 'eval_duration))
 (define &done-reason (&opt-hash-ref 'done_reason))
 (define &logprobs (&opt-hash-ref 'logprobs))
+(define &token (&hash-ref 'token))
+(define &logprob (&hash-ref 'logprob))
+(define &bytes (&hash-ref 'bytes))
+(define &top-logprobs (&hash-ref 'top_logprobs))
 (define &model (&opt-hash-ref 'model))
 (define &created-at (&opt-hash-ref 'created_at))
 

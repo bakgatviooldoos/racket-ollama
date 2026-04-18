@@ -31,6 +31,8 @@
          #:raw? (or-json-null/c boolean?)
          #:keep-alive (or-json-null/c string? seconds/c)
          #:options (or-json-null/c jsexpr-hash/c)
+         #:logprobs? (or-json-null/c boolean?)
+         #:top-logprobs (or-json-null/c natural-number/c)
          #:response-> (-> jsexpr? any)
          (or-json-null/c string?)]
         chat-response/c)]
@@ -40,6 +42,9 @@
          #:format (or-json-null/c 'json jsexpr?)
          #:think? (or-json-null/c boolean? 'low 'medium 'high)
          #:tools (or-json-null/c (hash/c symbol? tool-info?))
+         #:keep-alive (or-json-null/c string? seconds/c)
+         #:logprobs? (or-json-null/c boolean?)
+         #:top-logprobs (or-json-null/c natural-number/c)
          #:response->history-entry (-> jsexpr? (or/c #f message?))]
         (values
          chat-response/c
@@ -94,7 +99,7 @@
          #:messages (or-json-null/c chat-message*/c)
          #:stream? boolean?
          #:quantize (or-json-null/c quantize/c)]
-        (or/c jsexpr? response-stream/c))]
+        response-stream/c)]
   [ollama-copy-model
    (-> ollama-client? string? string?
        any)]
@@ -102,12 +107,12 @@
    (->* [ollama-client? string?]
         [#:insecure? (or-json-null/c boolean?)
          #:stream? boolean?]
-        (or/c jsexpr? response-stream/c))]
+        response-stream/c)]
   [ollama-push-model
    (->* [ollama-client? string?]
         [#:insecure? (or-json-null/c boolean?)
          #:stream? boolean?]
-        (or/c jsexpr? response-stream/c))]
+        response-stream/c)]
   [ollama-delete-model
    (-> ollama-client? string?
        any)]
