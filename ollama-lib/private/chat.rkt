@@ -48,12 +48,12 @@
     (begin0 part
       (set! part (more)))))
 
-(define (reverse/string-append* ss)
-  (string-append* (reverse ss)))
+(define reverse/string-append*
+  (compose1 string-append* reverse))
 
 (define (capture-thinking more #:key &thinking)
-  (for/fold ([thinks null]
-             [!think #f]
+  (for/fold ([!think #f]
+             [thinks null]
              #:result
              (values
               (prepend-part !think more)
@@ -62,8 +62,8 @@
              #:do [(define thinking (&thinking part))]
              #:final (not thinking))
     (if (not thinking)
-        (values thinks part)
-        (values (cons thinking thinks) !think))))
+        (values part thinks)
+        (values !think (cons thinking thinks)))))
 
 (define (capture-answer more #:key &text)
   (string-append*
@@ -81,18 +81,16 @@
     (values part (cons (&text part) contents))))
 
 (define (capture-tool-calls more)
-  (for/fold ([calls null]
-             [!call #f]
+  (for/fold ([!call #f]
+             [calls null]
              #:result
-             (values
-              (prepend-part !call more)
-              (reverse calls)))
+             (values (prepend-part !call more) calls))
             ([part (in-producer more eof)]
              #:do [(define tools (&message.tool-calls part))]
              #:final (not tools))
     (if (not tools)
-        (values calls part)
-        (values (append calls tools) !call))))
+        (values part calls)
+        (values !call (append calls tools)))))
 
 (define (capture-tool-calls+stats more)
   (let-values ([(more calls) (capture-tool-calls more)])
@@ -106,14 +104,14 @@
 (define (capture-content+stats more)
   (capture-answer+stats more #:key &message.content))
 
+(define (capture-thinking/message more)
+  (capture-thinking #:key &message.thinking))
+
 (define (capture-response more)
   (capture-answer more #:key &response))
 
 (define (capture-response+stats more)
   (capture-answer+stats more #:key &response))
-
-(define (capture-thinking/message more)
-  (capture-thinking #:key &message.thinking))
 
 (define (capture-thinking/response more)
   (capture-thinking #:key &thinking))
