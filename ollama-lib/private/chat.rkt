@@ -31,14 +31,6 @@
   with-pull-model
   with-push-model)
 
-(define-syntax-rule
-  (with-ollama-chat [(more continue) start-chat]
-    . body)
-  (let-values ([(more continue) start-chat])
-    (let loop ([more more] [continue continue])
-      (let ([continue (compose loop continue)])
-        . body))))
-
 (define &message.content (&hash-ref* 'message 'content))
 (define &message.thinking (&opt-hash-ref* 'message 'thinking))
 (define &message.tool-calls (&opt-hash-ref* 'message 'tool_calls))
@@ -55,6 +47,38 @@
   (lambda ()
     (begin0 part
       (set! part (more)))))
+
+(define (reverse/string-append* ss)
+  (string-append* (reverse ss)))
+
+(define (capture-thinking more #:key &thinking)
+  (for/fold ([thinks null]
+             [!think #f]
+             #:result
+             (values
+              (prepend-part !think more)
+              (reverse/string-append* thinks)))
+            ([part (in-producer more eof)]
+             #:do [(define thinking (&thinking part))]
+             #:final (not thinking))
+    (if (not thinking)
+        (values thinks part)
+        (values (cons thinking thinks) !think))))
+
+(define (capture-answer more #:key &text)
+  (string-append*
+   (for/list ([part (in-producer more eof)])
+     (&text part))))
+
+(define (capture-answer+stats more #:key &text)
+  (for/fold ([stat zero-stat] ;; noqa
+             [contents null]
+             #:result
+             (values
+              (reverse/string-append* contents)
+              (zero-stat . stat+ . stat)))
+            ([part (in-producer more eof)])
+    (values part (cons (&text part) contents))))
 
 (define (capture-tool-calls more)
   (for/fold ([calls null]
@@ -74,7 +98,33 @@
   (let-values ([(more calls) (capture-tool-calls more)])
     (if (null? calls)
         (values more calls #f)
-        (values more calls (more)))))
+        (values more calls (zero-stat . stat+ . (more))))))
+
+(define (capture-content more)
+  (capture-answer more #:key &message.content))
+
+(define (capture-content+stats more)
+  (capture-answer+stats more #:key &message.content))
+
+(define (capture-response more)
+  (capture-answer more #:key &response))
+
+(define (capture-response+stats more)
+  (capture-answer+stats more #:key &response))
+
+(define (capture-thinking/message more)
+  (capture-thinking #:key &message.thinking))
+
+(define (capture-thinking/response more)
+  (capture-thinking #:key &thinking))
+
+(define-syntax-rule
+  (with-ollama-chat [(more continue) start-chat]
+    . body)
+  (let-values ([(more continue) start-chat])
+    (let loop ([more more] [continue continue])
+      (let ([continue (compose loop continue)])
+        . body))))
 
 (define-syntax with-tool-calls
   (syntax-rules ()
@@ -87,29 +137,6 @@
         . body)
      (let-values ([(more* calls stats) (capture-tool-calls+stats more)])
        . body)]))
-
-(define (reverse/string-append* ss)
-  (string-append* (reverse ss)))
-
-(define (capture-thinking more #:key &thinking)
-  (for/fold ([thinks null]
-             [!think #f]
-             #:result
-             (values
-              (prepend-part !think more)
-              (reverse/string-append* thinks)))
-            ([part (in-producer more eof)]
-             #:do [(define thinking (&thinking part))]
-             #:final (not thinking))
-    (if (not thinking)
-        (values thinks part)
-        (values (cons thinking thinks) !think))))
-
-(define (capture-thinking/message more)
-  (capture-thinking #:key &message.thinking))
-
-(define (capture-thinking/response more)
-  (capture-thinking #:key &thinking))
 
 (define-syntax with-thinking
   (syntax-rules ()
@@ -127,69 +154,6 @@
         . body)
      (let-values ([(more* thinks) (capture-thinking/response more)])
        . body)]))
-
-(define-syntax-rule
-  (with-generate-image [(total completed) more]
-    . body)
-  (for/last ([part (in-producer more eof)])
-    (cond
-      [(&image part) part]
-      [else
-       (let ([completed (&completed part)]
-             [total (&total part)])
-         . body)])))
-
-(define-syntax-rule
-  (with-create-model [status more]
-    . body)
-  (for ([part (in-producer more eof)])
-    (let ([status (&status part)])
-      . body)))
-
-(define-syntax-rule
-  (with-pull-model [(status digest total completed) more]
-    . body)
-  (for ([part (in-producer more eof)])
-    (let ([status (&status part)]
-          [digest (&digest part)]
-          [total (&total part)]
-          [completed (&completed part)])
-      . body)))
-
-(define-syntax-rule
-  (with-push-model [(status digest total) more]
-    . body)
-  (for ([part (in-producer more eof)])
-    (let ([status (&status part)]
-          [digest (&digest part)]
-          [total (&total part)])
-      . body)))
-
-(define (capture-text more #:key &text)
-  (string-append*
-   (for/list ([part (in-producer more eof)])
-     (&text part))))
-
-(define (capture-text+stats more #:key &text)
-  (for/fold ([stat zero-stat] ;; noqa
-             [contents null]
-             #:result (values (reverse/string-append* contents) stat))
-            ([part (in-producer more eof)])
-    (values
-     (stat . stat+ . part)
-     (cons (&text part) contents))))
-
-(define (capture-content more)
-  (capture-text more #:key &message.content))
-
-(define (capture-content+stats more)
-  (capture-text+stats more #:key &message.content))
-
-(define (capture-response more)
-  (capture-text more #:key &response))
-
-(define (capture-response+stats more)
-  (capture-text+stats more #:key &response))
 
 (define-syntax with-content
   (syntax-rules ()
@@ -302,6 +266,43 @@
        #'[(label part) (in-producer
                         (->labeled-producer/response more)
                         (lambda (l p) (eof-object? p)))]])))
+
+(define-syntax-rule
+  (with-generate-image [(total completed) more]
+    . body)
+  (for/last ([part (in-producer more eof)])
+    (cond
+      [(&image part) part]
+      [else
+       (let ([completed (&completed part)]
+             [total (&total part)])
+         . body)])))
+
+(define-syntax-rule
+  (with-create-model [status more]
+    . body)
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)])
+      . body)))
+
+(define-syntax-rule
+  (with-pull-model [(status digest total completed) more]
+    . body)
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)]
+          [digest (&digest part)]
+          [total (&total part)]
+          [completed (&completed part)])
+      . body)))
+
+(define-syntax-rule
+  (with-push-model [(status digest total) more]
+    . body)
+  (for ([part (in-producer more eof)])
+    (let ([status (&status part)]
+          [digest (&digest part)]
+          [total (&total part)])
+      . body)))
 
 (define call-tool #f)
 
