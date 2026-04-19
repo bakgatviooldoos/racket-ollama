@@ -90,15 +90,15 @@
                  'top_logprobs top-logprobs)
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "generate"))
-        (check-response 'ollama-generate _)))
-  (let ([parts (mutable-treelist)]
-        [more* (->producer resp)])
+        (check-response 'ollama-generate)
+        (->producer)))
+  (let ([parts (mutable-treelist)])
     (lambda ()
-      (define data (more*))
+      (define data (resp))
       (begin0 data
         (if (eof-object? data)
             (response->
-             (parts->complete-message parts))
+             (parts->complete-response parts))
             (mutable-treelist-add! parts data))))))
 
 ;; IMAGES (EXPERIMENTAL)
@@ -121,7 +121,7 @@
                'steps steps)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "generate"))
-      (check-response 'ollama-generate-image _)
+      (check-response 'ollama-generate-image)
       (->producer)))
 
 ;; CHAT
@@ -155,31 +155,31 @@
                    'options options
                    'keep_alive keep-alive
                    'messages (->jsexpr messages)
-                   'tools (.? tools hash-values->jsexpr)
+                   'tools (.? tools ->jsexpr/hash-values)
                    'think (.? think? ->jsexpr)
                    'format (.? output-format ->jsexpr)
                    'logprobs logprobs?
                    'top_logprobs top-logprobs)
            #:timeouts (ollama-timeouts)
            session (~endpoint "api" "chat"))
-          (check-response 'ollama-chat _)))
+          (check-response 'ollama-chat)
+          (->producer)))
     (let ([messages (treelist-copy messages)]
-          [parts (mutable-treelist)]
-          [more* (->producer resp)])
+          [parts (mutable-treelist)])
       (values
        (lambda ()
-         (define data (more*))
+         (define data (resp))
          (begin0 data
            (cond
              [(eof-object? data)
               (define complete-message
                 (parts->complete-message parts))
-              (and~>
+              (and~>>
                (&message.content complete-message)
-               (non-empty-string? _)
+               (non-empty-string?)
                (and _ complete-message)
-               (response->history-entry _)
-               (mutable-treelist-add! messages _))]
+               (response->history-entry)
+               (mutable-treelist-add! messages))]
              [else
               (mutable-treelist-add! parts data)])))
        (lambda (#:format [output-format output-format] ;; noqa
@@ -229,7 +229,7 @@
                'keep_alive keep-alive)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "embed"))
-      (check-response 'ollama-embed _)
+      (check-response 'ollama-embed)
       (response-json)))
 
 ;; MODELS
@@ -240,7 +240,7 @@
        #:auth auth
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "tags"))
-      (check-response 'ollama-list-models _)
+      (check-response 'ollama-list-models)
       (response-json)))
 
 (define (ollama-list-running c)
@@ -250,7 +250,7 @@
        #:auth auth
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "ps"))
-      (check-response 'ollama-list-running _)
+      (check-response 'ollama-list-running)
       (response-json)))
 
 (define (ollama-load-model client model)
@@ -273,7 +273,7 @@
                'verbose verbose?)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "show"))
-      (check-response 'ollama-show-model _)
+      (check-response 'ollama-show-model)
       (response-json)))
 
 (define (ollama-create-model
@@ -307,7 +307,7 @@
                  'quantize (.? quantize ->jsexpr))
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "create"))
-        (check-response 'ollama-create-model _)
+        (check-response 'ollama-create-model)
         (->producer))))
 
 (define (ollama-copy-model c model destination)
@@ -320,7 +320,7 @@
                'destination destination)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "copy"))
-      (check-response 'ollama-copy-model _)
+      (check-response 'ollama-copy-model)
       (void)))
 
 (define (ollama-pull-model
@@ -337,7 +337,7 @@
                'insecure insecure?)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "pull"))
-      (check-response 'ollama-pull-model _)
+      (check-response 'ollama-pull-model)
       (->producer)))
 
 (define (ollama-push-model
@@ -354,7 +354,7 @@
                'insecure insecure?)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "push"))
-      (check-response 'ollama-push-model _)
+      (check-response 'ollama-push-model)
       (->producer)))
 
 (define (ollama-delete-model c model)
@@ -365,7 +365,7 @@
        #:json (hasheq 'model model)
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "delete"))
-      (check-response 'ollama-delete-model _)
+      (check-response 'ollama-delete-model)
       (void)))
 
 ;; VERSION
@@ -376,7 +376,7 @@
        #:auth auth
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "version"))
-      (check-response 'ollama-version _)
+      (check-response 'ollama-version)
       (response-json)))
 
 ;; FILE-BLOBS
@@ -387,7 +387,7 @@
        #:auth auth
        #:timeouts (ollama-timeouts)
        session (~endpoint "api" "blobs" (~sha256 sha256)))
-      (check-response 'ollama-has-blob? _ '(200 404))
+      (check-response 'ollama-has-blob? '(200 404))
       (response-status-code)
       (= 200)))
 
@@ -402,11 +402,11 @@
          #:data (->port data)
          #:timeouts (ollama-timeouts)
          session (~endpoint "api" "blobs" (~sha256 sha256)))
-        (check-response 'ollama-upload-blob _ '(201))
+        (check-response 'ollama-upload-blob '(201))
         (and sha256))))
 
 ;; JSON
-(define (hash-values->jsexpr hash)
+(define (->jsexpr/hash-values hash)
   (->jsexpr (hash-values hash)))
 
 ;; MESSAGES
@@ -425,7 +425,7 @@
       (make-message str-or-message)))
 
 ;; RESPONSES
-(define (check-response who resp [ok '(200)])
+(define (check-response resp who [ok '(200)])
   (begin0 resp
     (unless (memv (response-status-code resp) ok)
       (error who "request failed~n  status: ~s~n  body: ~e"

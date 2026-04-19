@@ -52,20 +52,28 @@
 (define (parts->complete-message parts)
   (define-values (stat contents)
     (for/fold ([stat zero-stat] ;; noqa
-               [contents null])
+               [contents null]
+               #:result
+               (values
+                (zero-stat . stat+ . stat)
+                (reverse contents)))
             ([part (in-mutable-treelist parts)])
       (define content (&message.content part))
       (values part (cons content contents))))
-  (~> (string-append* (reverse contents))
-      (hasheq 'content _)
-      (hash-set (zero-stat . stat+ . stat) 'message _)))
+  (~>> (string-append* contents)
+       (hasheq 'content)
+       (hash-set stat 'message)))
 
 (define (parts->complete-response parts)
   (define-values (stat responses)
     (for/fold ([stat zero-stat] ;; noqa
-               [responses null])
+               [responses null]
+               #:result
+               (values
+                (zero-stat . stat+ . stat)
+                (reverse responses)))
               ([part (in-mutable-treelist parts)])
       (define response (&response part))
       (values part (cons response responses))))
-  (~> (string-append* (reverse responses))
-      (hash-set (zero-stat . stat+ . stat) 'response _)))
+  (~>> (string-append* responses)
+       (hash-set stat 'response)))
