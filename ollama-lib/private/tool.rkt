@@ -151,7 +151,7 @@
             #:data data
             "tool '~a' requires '~a' as an argument" name label))))
       (when validate?
-        (unless (json-is? value type)
+        (unless (json/schema? value type)
           (raise-tool-error
            #:hints '("check the argument's schema again and retry")
            #:data data
