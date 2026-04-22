@@ -11,6 +11,7 @@
            json
            racket/list
            racket/match
+           racket/set
            racket/symbol
            threading)
   
@@ -187,8 +188,7 @@
               (list v (reason/not-const v const))
               (apply invalidate-ctx ctx path _))])]
 
-      [{ctx _path _v _schema}
-       ctx]))
+      [{ctx _path _v _schema} ctx]))
 
   (define (reason/number-out-of-range value minimum maximum)
     (define less? (< value minimum))
@@ -229,8 +229,7 @@
            (number/range?)
            (number/multiple?))]
 
-      [{ctx _path _v _schema}
-       ctx]))
+      [{ctx _path _v _schema} ctx]))
 
   (define (reason/string-length-out-of-range value n min-length max-length)
     (define less? (< n min-length))
@@ -424,7 +423,7 @@
                        #:break (not ok?))
               (define ctx* (validate/schema ok (cons index path) item unevaluated-items))
               (cond
-                [(validation-ctx-ok? ctx*) (values #t err)]
+                [(validation-ctx-ok? ctx*) (values ok? err)]
                 [else
                  (values #f (append err (validation-ctx-errors ctx*)))]))]))
        
@@ -441,12 +440,18 @@
   (define (reason/object-size-out-of-range value n min-props max-props)
     (define less? (< n min-props))
     (define which (if less? min-props max-props))
-    (~> "the object '~a' has ~a than '~a' propert~a"
+    (~> "the object ~a has ~a than ~a propert~a"
         (format
          (jsexpr->string value)
          (if less? "less" "more")
          which
          (if (= 1 which) "y" "ies"))))
+
+  (define (reason/object-missing-required-properties value required)
+    (~> "the object ~a is missing at least one required property in ~a"
+        (format
+         (jsexpr->string value)
+         (jsexpr->string required))))
   
   (define schema/check-object
     (match-lambda**
@@ -472,25 +477,104 @@
                 (apply invalidate-ctx ctx path _))]))
      
        (define (object/required? ctx)
-         ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(subset? (map string->symbol required) (hash-keys v)) ctx]
+           [else
+            (~> (hasheq 'required required)
+                (list v (reason/object-missing-required-properties v required))
+                (apply invalidate-ctx ctx path _))]))
 
        (define (object/dependent-required? ctx)
-         ctx)
-
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(not dependent-required) ctx]
+           [else
+            (for/fold ([ctx ctx]
+                       #:result ctx)
+                      ([(prop req) (in-immutable-hash dependent-required)]
+                       #:break (not (validation-ctx-ok? ctx))
+                       #:when (hash-has-key? v prop))
+              (cond
+                [(subset? (map string->symbol req) (hash-keys v)) ctx]
+                [else
+                 (~> (hasheq 'dependentRequired dependent-required)
+                     (list v (reason/object-missing-required-properties v req))
+                     (apply invalidate-ctx ctx path _))]))]))
+       
        (define (object/dependent-schemas? ctx)
-         ctx)
-
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(not dependent-schemas) ctx]
+           [else
+            (define ann (validation-ctx-annotations ctx))
+            (for/fold ([ok? #t]
+                       [err null]
+                       #:result (validation-ctx ok? (if ok? ann null) (if ok? null err)))
+                      ([(prop schema) (in-immutable-hash dependent-schemas)]
+                       #:when (hash-has-key? v prop)
+                       #:break (not ok?))
+              (define ctx* (validate/schema ok path v schema))
+              (if (validation-ctx-ok? ctx*)
+                  (values ok? err)
+                  (values #f (append err (validation-ctx-errors ctx*)))))]))
+       
        (define (object/properties? ctx)
-         ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(not props) ctx]
+           [else
+            (for/fold ([ok? #t]
+                       [ann (validation-ctx-annotations ctx)]
+                       [err null]
+                       #:result (validation-ctx ok? (if ok? ann null) (if ok? null err)))
+                      ([(prop schema) (in-immutable-hash props)]
+                       #:break (not ok?)
+                       #:when (hash-has-key? v prop))
+              (define ctx* (validate/schema ok (cons prop path) (hash-ref v prop) schema))
+              (cond
+                [(validation-ctx-ok? ctx*)
+                 (values ok? (cons prop ann) err)]
+                [else
+                 (values #f ann (append err (validation-ctx-errors ctx*)))]))]))
 
        (define (object/pattern-properties? ctx)
-         ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(not pattern-props) ctx]
+           [else
+            (define pat (map (compose1 regexp symbol->string) (hash-keys pattern-props)))
+            (for/fold ([ok? #t]
+                       [ann (validation-ctx-annotations ctx)]
+                       [err null]
+                       #:result (validation-ctx ok? (if ok? ann null) (if ok? null err)))
+                      ([(prop u) (in-immutable-hash v)]
+                       #:break (not ok?))
+              (define schema
+                (for/first ([rx (in-list pat)]
+                            #:when (regexp-match? rx (symbol->string prop)))
+                  (hash-ref pattern-props (string->symbol (object-name rx)))))
+              (cond
+                [(not schema) (values ok? ann err)]
+                [else
+                 (define ctx* (validate/schema ok (cons prop path) u schema))
+                 (cond
+                   [(validation-ctx-ok? ctx*)
+                    (values ok? (cons prop ann) err)]
+                   [else
+                    (values #f ann (append err (validation-ctx-errors ctx*)))])]))]))
 
        (define (object/additional-properties? ctx)
-         ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(undefined? additional-props) ctx]
+           [else ctx]))
 
        (define (object/unevaluated-properties? ctx)
-         ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(undefined? unevaluated-props) ctx]
+           [else ctx]))
      
        (~> ctx
            (object/size?)
