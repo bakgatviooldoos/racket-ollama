@@ -141,7 +141,7 @@
       [{ctx _value (or #t (hash*))} ctx]
       [{ctx value #f}
        (define always-error (make-error value))
-       (~>> "no value can match this schema"
+       (~>> "this schema always fails to match"
             (always-error #f)
             (invalidate-ctx ctx))]))
 
@@ -175,8 +175,8 @@
        (define type-error (make-error value))
        
        (define (reason/type-error)
-         (~> "the value ~a is not an instance of type '~a'"
-             (format (jsexpr->string value) type)))
+         (~> "the value is not an instance of type '~a'"
+             (format type)))
        
        (~>> (reason/type-error)
             (type-error (hasheq 'type type))
@@ -191,17 +191,10 @@
         (hash* ['const const])}
 
        (define const-error (make-error value))
-       
-       (define (reason/const-error)
-         (~> "the value ~a is not equal to the constant ~a"
-             (format
-              (jsexpr->string value)
-              (jsexpr->string const))))
-       
        (cond
          [(equal? const value) ctx]
          [else
-          (~>> (reason/const-error)
+          (~>> "the value is not equal to the constant expression"
                (const-error (hasheq 'const const))
                (invalidate-ctx ctx))])]
       
@@ -222,9 +215,8 @@
        
        (define (reason/number-range-error)
          (define less? (< value minimum))
-         (~> "the number ~a is ~a than ~a"
+         (~> "the number is ~a than ~a"
              (format
-              value
               (if less? "less" "greater")
               (if less? minimum maximum))))
        
@@ -240,11 +232,12 @@
                  (invalidate-ctx ctx))]))
 
        (define (reason/number-multiplicity-error)
-         (~> "the number ~a is not a multiple of ~a"
-             (format value multiple)))
+         (~> "the number is not a multiple of ~a"
+             (format multiple)))
      
        (define (number/check-multiple ctx)
          (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
            [(implies multiple (integer? (/ value multiple))) ctx]
            [else
             (~>> (reason/number-multiplicity-error)
@@ -262,24 +255,24 @@
       [{(? validation-ctx-ok? ctx)
         (? string? value)
         (hash* ['pattern rx #:default #f]
+               ['enum options #:default undefined]
                ['minLength min-length #:default 0]
                ['maxLength max-length #:default +inf.0])}
 
        (define string-error (make-error value))
        
-       (define n (string-length value))
+       (define length (string-length value))
 
        (define (reason/string-length-error)
-         (define less? (< n min-length))
-         (~> "the string ~a has ~a than ~a characters"
+         (define less? (< length min-length))
+         (~> "the string has ~a than ~a characters"
              (format
-              (jsexpr->string value)
               (if less? "less" "more")
               (if less? min-length max-length))))
      
        (define (string/check-length ctx)
          (cond
-           [(<= min-length n max-length) ctx]
+           [(<= min-length length max-length) ctx]
            [else
             (~>> (reason/string-length-error)
                  (string-error
@@ -287,12 +280,23 @@
                       (json-&opt &max-length (inf->undefined max-length))))
                  (invalidate-ctx ctx))]))
 
+       (define (string/check-options ctx)
+         (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
+           [(undefined? options) ctx]
+           [(member value options) ctx]
+           [else
+            (~>> "the string is not a member of the enumeration"
+                 (string-error (hasheq 'enum options))
+                 (invalidate-ctx ctx))]))
+
        (define (reason/string-pattern-error)
-         (~> "the string ~a does not match the regular-expression '~a'"
-             (format (jsexpr->string value) rx)))
+         (~> "the string does not match the regular-expression '~a'"
+             (format rx)))
 
        (define (string/check-pattern ctx)
          (cond
+           [(not (validation-ctx-ok? ctx)) ctx]
            [(implies rx (regexp-match? (regexp rx) value)) ctx]
            [else
             (~>> (reason/string-pattern-error)
@@ -301,8 +305,9 @@
      
        (~> ctx
            (string/check-length)
+           (string/check-options)
            (string/check-pattern))]
-    
+      
       [{ctx _value _schema} ctx]))
 
   (define schema/check-not
@@ -313,16 +318,10 @@
 
        (define contradiction-error (make-error value))
        
-       (define (reason/contradiction-error)
-         (~> "the value ~a must not match ~a"
-             (format
-              (jsexpr->string value)
-              (jsexpr->string invalid))))
-       
        (cond
          [(not (validation-ctx-ok? (validate/schema ok value invalid))) ctx]
          [else
-          (~>> (reason/contradiction-error)
+          (~>> "the value must never match this schema"
                (contradiction-error (hasheq 'not invalid))
                (invalidate-ctx ctx))])]
     
@@ -425,22 +424,21 @@
 
        (define array-error (make-error value))
        
-       (define n (length value))
-       (define m (length prefix-items))
+       (define size (length value))
+       (define prefix (length prefix-items))
 
        (define (reason/array-size-error min-items max-items)
-         (define less? (< n min-items))
+         (define less? (< size min-items))
          (define which (if less? min-items max-items))
-         (~> "the array ~a has ~a than ~a item~a"
+         (~> "the array has ~a than ~a item~a"
              (format
-              (jsexpr->string value)
               (if less? "less" "more")
               which
               (if (= 1 which) "" "s"))))
 
        (define (array/check-size ctx)
          (cond
-           [(<= min-items n max-items) ctx]
+           [(<= min-items size max-items) ctx]
            [else
             (~>> (reason/array-size-error min-items max-items)
                  (array-error
@@ -451,8 +449,8 @@
        (define (array/check-prefix-items ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
-           [(< n m)
-            (~>> (reason/array-size-error m +inf.0)
+           [(< size prefix)
+            (~>> (reason/array-size-error prefix +inf.0)
                  (array-error (hasheq 'prefixItems prefix-items))
                  (invalidate-ctx ctx))]
            [else
@@ -481,8 +479,8 @@
                        [ann (validation-ctx-annotations ctx)]
                        [err null]
                        #:result (validation-ctx ok? (if ok? ann empty-set) (if ok? null err)))
-                      ([item (in-list (drop value m))]
-                       [index (in-naturals m)]
+                      ([item (in-list (drop value prefix))]
+                       [index (in-naturals prefix)]
                        #:break (not ok?))
               (define ctx* (parameterize ([current-path (cons index (current-path))])
                              (validate/schema ok item items)))
@@ -495,13 +493,11 @@
        (define (reason/array-content-error n)
          (define less? (< n min-contains))
          (define which (if less? min-contains max-contains))
-         (~> "the array ~a contains ~a than ~a instance~a of ~a"
+         (~> "the array contains ~a than ~a instance~a of the schema"
              (format
-              (jsexpr->string value)
               (if less? "less" "more")
               which
-              (if (= 1 which) "" "s")
-              (jsexpr->string contains))))
+              (if (= 1 which) "" "s"))))
 
        (define (array/check-contains ctx)
          (cond
@@ -532,23 +528,16 @@
                  (values ann count)]
                 [else
                  (values (set-add ann index) (+ count 1))]))]))
-
-       (define (reason/array-duplicate-item-error duplicate)
-         (~> "the array ~a contains at least one duplicate of ~a"
-             (format
-              (jsexpr->string value)
-              (jsexpr->string duplicate))))
        
        (define (array/check-unique ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
            [(not unique-items?) ctx]
            [else
-            (define dup (check-duplicates value #:default undefined))
             (cond
-              [(undefined? dup) ctx]
+              [(undefined? (check-duplicates value #:default undefined)) ctx]
               [else
-               (~>> (reason/array-duplicate-item-error dup)
+               (~>> "the array contains at least one duplicate value"
                     (array-error (hasheq 'uniqueItems #t))
                     (invalidate-ctx ctx))])]))
        
@@ -599,40 +588,33 @@
 
        (define object-error (make-error value))
        
-       (define n (hash-count value))
+       (define size (hash-count value))
 
        (define (reason/object-size-error)
-         (define less? (< n min-props))
+         (define less? (< size min-props))
          (define which (if less? min-props max-props))
-         (~> "the object ~a has ~a than ~a propert~a"
+         (~> "the object has ~a than ~a propert~a"
              (format
-              (jsexpr->string value)
               (if less? "less" "more")
               which
               (if (= 1 which) "y" "ies"))))
      
        (define (object/check-size ctx)
          (cond
-           [(<= min-props n max-props) ctx]
+           [(<= min-props size max-props) ctx]
            [else
             (~>> (reason/object-size-error)
                  (object-error
                   (~> (hasheq 'minProperties min-props)
                       (json-&opt &max-properties (inf->undefined max-props))))
                  (invalidate-ctx ctx))]))
-
-       (define (reason/object-required-properties-error required)
-         (~> "the object ~a is missing at least one required property in ~a"
-             (format
-              (jsexpr->string value)
-              (jsexpr->string required))))
      
        (define (object/check-required ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
            [(subset? (map string->symbol required) (hash-keys value)) ctx]
            [else
-            (~>> (reason/object-required-properties-error required)
+            (~>> "the object is missing at least one required property"
                  (object-error (hasheq 'required required))
                  (invalidate-ctx ctx))]))
 
@@ -641,15 +623,16 @@
            [(not (validation-ctx-ok? ctx)) ctx]
            [(not dependent-required) ctx]
            [else
+            (define props (hash-keys value))
             (for/fold ([ctx ctx]
                        #:result ctx)
                       ([(prop req) (in-immutable-hash dependent-required)]
                        #:break (not (validation-ctx-ok? ctx))
                        #:when (hash-has-key? value prop))
               (cond
-                [(subset? (map string->symbol req) (hash-keys value)) ctx]
+                [(subset? (map string->symbol req) props) ctx]
                 [else
-                 (~>> (reason/object-required-properties-error req)
+                 (~>> "the object is missing at least one required property"
                       (object-error (hasheq 'dependentRequired dependent-required))
                       (invalidate-ctx ctx))]))]))
        
@@ -666,9 +649,10 @@
                        #:when (hash-has-key? value prop)
                        #:break (not ok?))
               (define ctx* (validate/schema ok value schema))
-              (if (validation-ctx-ok? ctx*)
-                  (values ok? err)
-                  (values #f (append err (validation-ctx-errors ctx*)))))]))
+              (cond
+                [(validation-ctx-ok? ctx*) (values ok? err)]
+                [else
+                 (values #f (append err (validation-ctx-errors ctx*)))]))]))
        
        (define (object/check-properties ctx)
          (cond
@@ -783,7 +767,7 @@
         (schema/check-all-of  value schema)
         (schema/check-any-of  value schema)
         (schema/check-one-of  value schema)
-        ; uses propagated annotations
+        ; use propagated annotations
         (schema/check-array   value schema)
         (schema/check-object  value schema))))
 
@@ -960,3 +944,9 @@
    #:contains Number
    #:max-contains 3
    #:min-contains 2))
+
+(json/schema-errors?
+ #f
+ (AnyOf
+  String
+  Number))
