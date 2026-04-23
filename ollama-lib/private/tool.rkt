@@ -150,16 +150,17 @@
             #:hints '("check the tool's schema again and retry")
             #:data data
             "tool '~a' requires '~a' as an argument" name label))))
-      (when validate?
-        (define err (json/schema-errors? value type))
-        (when err
-          (raise-tool-error
-           #:hints '("check the argument's schema again and retry")
-           #:data data
-           "invalid argument in tool '~a':~nargument '~a' expected type '~a', received: '~a'"
-           name label
-           (jsexpr->string type)
-           (jsexpr->string value))))
+      (cond
+        [(and validate? (json/schema-errors? value type))
+         => (lambda (err)
+              (with-continuation-mark 'schema-errors err
+                (raise-tool-error
+                 #:hints '("check the argument's schema again and retry")
+                 #:data data
+                 "invalid argument in tool '~a':~nargument '~a' expected type ~a, received: ~a"
+                 name label
+                 (jsexpr->string type)
+                 (jsexpr->string value))))])
       value))
   (define res
     (parameterize ([current-call-data data])
