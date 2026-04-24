@@ -130,7 +130,9 @@
   ;; VALIDATION
   (define current-path (make-parameter #f))
   (define current-scope (make-parameter #f))
+  
   (define empty-set (set))
+  (define empty-hash (hasheq))
   
   (struct schema-error (scope schema path value reason) #:transparent)
   (struct validation-ctx (ok? annotations errors) #:transparent)
@@ -654,11 +656,11 @@
     (match-lambda**
       [{(? validation-ctx-ok? ctx)
         (? hash? value)
-       (hash* ['properties props #:default #f]
+       (hash* ['properties props #:default empty-hash]
               ['required required #:default null]
               ['minProperties min-props #:default 0]
               ['maxProperties max-props #:default +inf.0]
-              ['patternProperties pattern-props #:default #f]
+              ['patternProperties pattern-props #:default empty-hash]
               ['dependentRequired dependent-required #:default #f]
               ['dependentSchemas dependent-schemas #:default #f]
               ['additionalProperties additional-props #:default undefined]
@@ -748,7 +750,6 @@
        (define (object/check-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
-           [(not props) ctx]
            [else
             (with-scope 'properties
               (for/fold ([ok? #t]
@@ -771,12 +772,11 @@
                   [else
                    (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
 
+       (define lookup (pattern-property-lookup pattern-props))
        (define (object/check-pattern-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
-           [(not pattern-props) ctx]
            [else
-            (define lookup (pattern-property-lookup pattern-props))
             (with-scope 'patternProperties
               (for/fold ([ok? #t]
                          [ann (validation-ctx-annotations ctx)]
@@ -818,8 +818,8 @@
                         
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?)
-                         #:unless (set-member? ann prop))
-
+                         #:unless (or (hash-has-key? props prop)
+                                      (not (undefined? (lookup prop)))))
                 (define ctx* (with-path prop (validate/schema ok u additional-props)))
                 (cond
                   [(validation-ctx-ok? ctx*)
