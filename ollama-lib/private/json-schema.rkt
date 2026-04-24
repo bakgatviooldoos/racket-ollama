@@ -118,6 +118,15 @@
     (for/hasheq ([(rx schema) (in-immutable-hash pattern-props)])
       (values (regexp->symbol rx) schema)))
 
+  (define (pattern-property-lookup pattern-props)
+    (define pat (map symbol->regexp (hash-keys pattern-props)))
+    (lambda (prop)
+      (for/fold ([u undefined])
+                ([rx (in-list pat)]
+                 #:break (not (undefined? u))
+                 #:when (regexp-match? rx (symbol->string prop)))
+        (hash-ref pattern-props (regexp->symbol rx)))))
+
   ;; VALIDATION
   (define current-path (make-parameter #f))
   (define current-scope (make-parameter #f))
@@ -767,7 +776,7 @@
            [(not (validation-ctx-ok? ctx)) ctx]
            [(not pattern-props) ctx]
            [else
-            (define pat (map symbol->regexp (hash-keys pattern-props)))
+            (define lookup (pattern-property-lookup pattern-props))
             (with-scope 'patternProperties
               (for/fold ([ok? #t]
                          [ann (validation-ctx-annotations ctx)]
@@ -781,12 +790,9 @@
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?))
 
-                (define schema
-                  (for/first ([rx (in-list pat)]
-                              #:when (regexp-match? rx (symbol->string prop)))
-                    (hash-ref pattern-props (regexp->symbol rx))))
+                (define schema (lookup prop))
                 (cond
-                  [(not schema) (values ok? ann err)]
+                  [(undefined? schema) (values ok? ann err)]
                   [else
                    (define ctx* (with-path prop (validate/schema ok u schema)))
                    (cond
