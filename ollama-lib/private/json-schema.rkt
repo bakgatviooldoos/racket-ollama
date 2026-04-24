@@ -123,16 +123,18 @@
   (define current-scope (make-parameter #f))
   (define empty-set (set))
   
-  (struct schema-error (path scope schema value reason) #:transparent)
+  (struct schema-error (scope schema path value reason) #:transparent)
   (struct validation-ctx (ok? annotations errors) #:transparent)
 
   (define ok (validation-ctx #t empty-set null))
 
   (define ((make-error value) schema reason)
     (schema-error
-     (reverse (current-path))
      (reverse (current-scope))
-     schema value reason))
+     schema
+     (reverse (current-path))
+     value
+     reason))
 
   (define (invalidate-ctx ctx error)
     (~>> (validation-ctx-errors ctx)
@@ -204,20 +206,17 @@
       [{(? validation-ctx-ok? ctx)
         value
         (hash* ['const const])}
-
-       (define const-error (make-error value))
+       
        (cond
          [(equal? const value) ctx]
          [else
+          (define const-error (make-error value))
           (~>> "the value is not equal to the constant expression"
                (const-error (hasheq 'const const))
                (invalidate-ctx ctx)
                (with-scope 'const))])]
       
       [{ctx _value _schema} ctx]))
-
-  (define (inf->undefined x)
-    (if (infinite? x) undefined x))
 
   (define schema/check-number
     (match-lambda**
@@ -246,7 +245,7 @@
                  (with-scope 'minimum))]
            [else
             (~>> (reason/number-range-error)
-                 (number-error (number-error (hasheq 'maximum maximum)))
+                 (number-error (hasheq 'maximum maximum))
                  (invalidate-ctx ctx)
                  (with-scope 'maximum))]))
 
@@ -344,16 +343,15 @@
         value
         (hash* ['not invalid])}
 
-       (define contradiction-error (make-error value))
-       
        (cond
          [(not (validation-ctx-ok? (validate/schema ok value invalid))) ctx]
          [else
+          (define contradiction-error (make-error value))
           (~>> "the value must never match this schema"
                (contradiction-error (hasheq 'not invalid))
                (invalidate-ctx ctx)
                (with-scope 'not))])]
-    
+      
       [{ctx _value _schema} ctx]))
 
   (define schema/check-if
@@ -729,8 +727,8 @@
                             (validation-ctx #f empty-set err)]))
                         
                         ([(prop schema) (in-immutable-hash dependent-schemas)]
-                         #:when (hash-has-key? value prop)
-                         #:break (not ok?))
+                         #:break (not ok?)
+                         #:when (hash-has-key? value prop))
                 
                 (define ctx* (validate/schema ok value schema))
                 (cond
@@ -1055,8 +1053,4 @@
    #:max-contains 3
    #:min-contains 2))
 
-(json/schema-errors?
- #f
- (AnyOf
-  String
-  Number))
+(json/schema-errors? #f (AnyOf String Number))
