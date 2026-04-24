@@ -119,10 +119,10 @@
       (values (regexp->symbol rx) schema)))
 
   (define (pattern-property-lookup pattern-props)
-    (define pat (map symbol->regexp (hash-keys pattern-props)))
+    (define patterns (map symbol->regexp (hash-keys pattern-props)))
     (lambda (prop)
       (for/fold ([u undefined])
-                ([rx (in-list pat)]
+                ([rx (in-list patterns)]
                  #:break (not (undefined? u))
                  #:when (regexp-match? rx (symbol->string prop)))
         (hash-ref pattern-props (regexp->symbol rx)))))
@@ -772,7 +772,7 @@
                   [else
                    (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
 
-       (define lookup (pattern-property-lookup pattern-props))
+       (define rx-lookup (pattern-property-lookup pattern-props))
        (define (object/check-pattern-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -790,7 +790,7 @@
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?))
 
-                (define schema (lookup prop))
+                (define schema (rx-lookup prop))
                 (cond
                   [(undefined? schema) (values ok? ann err)]
                   [else
@@ -818,8 +818,8 @@
                         
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?)
-                         #:unless (or (hash-has-key? props prop)
-                                      (not (undefined? (lookup prop)))))
+                         #:when (and (not (hash-has-key? props prop))
+                                     (undefined? (rx-lookup prop))))
                 (define ctx* (with-path prop (validate/schema ok u additional-props)))
                 (cond
                   [(validation-ctx-ok? ctx*)
@@ -887,7 +887,7 @@
 (require 'schema-utils)
 
 (define None    #f)
-(define Some    (hasheq))
+(define Some    empty-hash)
 (define Null    (&type Some "null"))
 (define Boolean (&type Some "boolean"))
 (define Number  (&type Some "number"))
