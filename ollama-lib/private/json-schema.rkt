@@ -11,7 +11,6 @@
            json
            racket/list
            racket/match
-           racket/math
            racket/set
            racket/symbol
            threading)
@@ -120,19 +119,26 @@
 
   (define (pattern-property-lookup pattern-props)
     (define patterns (map symbol->regexp (hash-keys pattern-props)))
+    (define matches (hasheq))
     (lambda (prop)
-      (define key (symbol->string prop))
-      (for/fold ([u undefined])
-                ([rx (in-list patterns)]
-                 #:break (not (undefined? u))
-                 #:when (regexp-match? rx key))
-        (hash-ref pattern-props (regexp->symbol rx)))))
+      (cond
+        [(hash-has-key? matches prop) (hash-ref matches prop)]
+        [else
+         (define key (symbol->string prop))
+         (for/fold ([u undefined]
+                    #:result
+                    (begin0 u
+                      (set! matches (hash-set matches prop u))))
+                   ([rx (in-list patterns)]
+                    #:break (not (undefined? u))
+                    #:when (regexp-match? rx key))
+           (hash-ref pattern-props (regexp->symbol rx)))])))
 
   ;; VALIDATION
   (define current-path (make-parameter #f))
   (define current-scope (make-parameter #f))
   
-  (define empty-set (set))
+  (define empty-set (seteq))
   (define empty-hash (hasheq))
   
   (struct schema-error (scope schema path value reason) #:transparent)
@@ -210,23 +216,6 @@
             (type-error (hasheq 'type type))
             (invalidate-ctx ctx)
             (with-scope 'type))]
-      
-      [{ctx _value _schema} ctx]))
-
-  (define schema/check-const
-    (match-lambda**
-      [{(? validation-ctx-ok? ctx)
-        value
-        (hash* ['const const])}
-       
-       (cond
-         [(equal? const value) ctx]
-         [else
-          (define const-error (make-error value))
-          (~>> "the value is not equal to the constant expression"
-               (const-error (hasheq 'const const))
-               (invalidate-ctx ctx)
-               (with-scope 'const))])]
       
       [{ctx _value _schema} ctx]))
 
@@ -362,6 +351,23 @@
                (contradiction-error (hasheq 'not invalid))
                (invalidate-ctx ctx)
                (with-scope 'not))])]
+      
+      [{ctx _value _schema} ctx]))
+
+  (define schema/check-const
+    (match-lambda**
+      [{(? validation-ctx-ok? ctx)
+        value
+        (hash* ['const const])}
+       
+       (cond
+         [(equal? const value) ctx]
+         [else
+          (define const-error (make-error value))
+          (~>> "the value is not equal to the constant expression"
+               (const-error (hasheq 'const const))
+               (invalidate-ctx ctx)
+               (with-scope 'const))])]
       
       [{ctx _value _schema} ctx]))
 
@@ -871,10 +877,10 @@
         ; check simple constraints
         (schema/check-literal value schema)
         (schema/check-type    value schema)
-        (schema/check-const   value schema)
         (schema/check-number  value schema)
         (schema/check-string  value schema)
         (schema/check-not     value schema)
+        (schema/check-const   value schema)
         ; collect/propagate annotations
         (schema/check-if      value schema)
         (schema/check-all-of  value schema)
@@ -1057,9 +1063,11 @@
     (with-Array (Array Number)
       #:min-items 2))
    #:contains Number
-   #:max-contains 3
-   #:min-contains 2))
+   #:min-contains 2
+   #:max-contains 3))
 
 (json/schema-errors? #f (AnyOf String Number))
 
-(json/schema-errors? (hasheq 'hello "hello") (Object* `([hello . ,(Just "world")])))
+(json/schema-errors?
+ (hasheq 'hello "hello")
+ (Object* `([hello . ,(Just "world")])))
