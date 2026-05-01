@@ -49,15 +49,15 @@
            #:default [default undefined]
            #:null? [nullable? (json-null? default)]
            json &key v [app values])
-    (let ([v (if (undefined? v) default v)])
-      (cond
-        [(undefined? v) json]
-        [(and
-          (not nullable?)
-          (json-null? v))
-         json]
-        [else
-         (&key json (app v))])))
+    (define u (if (undefined? v) default v))
+    (cond
+      [(undefined? u) json]
+      [(and
+        (not nullable?)
+        (json-null? u))
+       json]
+      [else
+       (&key json (app u))]))
   
   (define &type (&opt-hash-ref 'type))
   
@@ -159,6 +159,18 @@
          (cons error)
          (validation-ctx #f empty-set)))
 
+  (define (prepare-ctx ok? ann err)
+    (if ok?
+        (validation-ctx ok? ann null)
+        (validation-ctx #f empty-set err)))
+
+  (define (ctx->ok?/ann/err ann err data)
+    (match-lambda
+      [(validation-ctx #f _ err*)
+       (values #f ann (append err err*))]
+      [_
+       (values #t (set-add ann data) err)]))
+
   (define-syntax-rule
     (with-path path . body)
     (parameterize ([current-path (cons path (current-path))])
@@ -200,10 +212,13 @@
                   (validation-ctx ok? empty-set (if ok? null err)))
                  ([type (in-list types)]
                   #:break ok?)
-         (define ctx* (schema/check-type ctx value (hasheq 'type type)))
-         (values
-          (or ok? (validation-ctx-ok? ctx*))
-          (append err (validation-ctx-errors ctx*))))]
+         (~> (hasheq 'type type)
+             (schema/check-type ctx value _)
+             (match
+               [(validation-ctx #f _ err*)
+                (values ok? (append err err*))]
+               [_
+                (values #t err)])))]
       
       [{ctx value (hash* ['type type])}
        (define type-error (make-error value))
@@ -342,9 +357,10 @@
       [{(? validation-ctx-ok? ctx)
         value
         (hash* ['not invalid])}
-
+       
+       (define ctx* (validate/schema ok value invalid))
        (cond
-         [(not (validation-ctx-ok? (validate/schema ok value invalid))) ctx]
+         [(not (validation-ctx-ok? ctx*)) ctx]
          [else
           (define contradiction-error (make-error value))
           (~>> "the value must never match this schema"
@@ -359,7 +375,6 @@
       [{(? validation-ctx-ok? ctx)
         value
         (hash* ['const const])}
-       
        (cond
          [(equal? const value) ctx]
          [else
@@ -375,19 +390,19 @@
     (match-lambda**
       [{(? validation-ctx-ok? ctx)
         value
-        (hash* ['if cond*]
+        (hash* ['if test]
                ['then then #:default #t]
-               ['else else* #:default undefined])}
-       (define ctx* (validate/schema ctx value cond*))
-       (with-scope 'if
-         (cond
-           [(validation-ctx-ok? ctx*)
-            (with-scope 'then
-              (validate/schema ctx* value then))]
-           [(undefined? else*) ctx]
-           [else
-            (with-scope 'else
-              (validate/schema ctx value else*))]))]
+               ['else else #:default undefined])}
+       
+       (define ctx* (validate/schema ctx value test))
+       (~>> (cond
+              [(validation-ctx-ok? ctx*)
+               (~>> (validate/schema ctx* value then)
+                    (with-scope 'then))]
+              [(undefined? else) ctx]
+              [(~>> (validate/schema ctx value else)
+                    (with-scope 'else))])
+            (with-scope 'if))]
       
       [{ctx _value _schema} ctx]))
   
@@ -401,20 +416,17 @@
                     [ann (validation-ctx-annotations ctx)]
                     [err null]
                     #:result
-                    (cond
-                      [ok? (validation-ctx #t ann null)]
-                      [else
-                       (validation-ctx #f empty-set err)]))
+                    (prepare-ctx ok? ann err))
                    
                    ([(schema index) (in-indexed (in-list all))]
                     #:break (not ok?))
-           (define ctx* (with-scope index
-                          (validate/schema ok value schema)))
-           (cond
-             [(validation-ctx-ok? ctx*)
-              (values ok? (set-union ann (validation-ctx-annotations ctx*)) err)]
-             [else
-              (values #f ann (append err (validation-ctx-errors ctx*)))])))]
+           (~>> (validate/schema ok value schema)
+                (with-scope index)
+                (match _
+                  [(validation-ctx #t ann* _)
+                   (values ok? (set-union ann ann*) err)]
+                  [(validation-ctx #f _ err*)
+                   (values #f ann (append err err*))]))))]
 
       [{ctx _value _schema} ctx]))
 
@@ -428,20 +440,17 @@
                     [ann (validation-ctx-annotations ctx)]
                     [err null]
                     #:result
-                    (cond
-                      [ok? (validation-ctx #t ann null)]
-                      [else
-                       (validation-ctx #f empty-set err)]))
+                    (prepare-ctx ok? ann err))
                    
                    ([(schema index) (in-indexed (in-list any))]
                     #:break ok?)
-           (define ctx* (with-scope index
-                          (validate/schema ok value schema)))
-           (cond
-             [(validation-ctx-ok? ctx*)
-              (values #t (set-union ann (validation-ctx-annotations ctx*)) err)]
-             [else
-              (values ok? ann (append err (validation-ctx-errors ctx*)))])))]
+           (~>> (validate/schema ok value schema)
+                (with-scope index)
+                (match _
+                  [(validation-ctx #t ann* _)
+                   (values #t (set-union ann ann*) err)]
+                  [(validation-ctx #f _ err*)
+                   (values ok? ann (append err err*))]))))]
       
       [{ctx _value _schema} ctx]))
 
@@ -455,20 +464,18 @@
                     [ann (validation-ctx-annotations ctx)]
                     [err null]
                     #:result
-                    (cond
-                      [(= 1 count) (validation-ctx #t ann null)]
-                      [else
-                       (validation-ctx #f empty-set err)]))
+                    (prepare-ctx (= count 1) ann err))
+                   
                    ([(schema index) (in-indexed (in-list one))]
                     #:break (< 1 count))
-           (define ctx* (with-scope index
-                          (validate/schema ok value schema)))
-           (cond
-             [(validation-ctx-ok? ctx*)
-              (values (+ count 1) (set-union ann (validation-ctx-annotations ctx*)) err)]
-             [else
-              (values count ann (append err (validation-ctx-errors ctx*)))])))]
-
+           (~>> (validate/schema ok value schema)
+                (with-scope index)
+                (match _
+                  [(validation-ctx #t ann* _)
+                   (values (+ count 1) (set-union ann ann*) err)]
+                  [(validation-ctx #f _ err*)
+                   (values count ann (append err err*))]))))]
+      
       [{ctx _value _schema} ctx]))
 
   (define schema/check-array
@@ -525,21 +532,14 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([schema (in-list prefix-items)]
                          [(item index) (in-indexed (in-list value))]
                          #:break (not ok?))
-                (define ctx* (with-path index
-                               (validate/schema ok item schema)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann index) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
+                (~>> (validate/schema ok item schema)
+                     (with-path index)
+                     ((ctx->ok?/ann/err ann err index)))))]))
 
        (define (array/check-items ctx)
          (cond
@@ -551,22 +551,15 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([item (in-list (drop value prefix))]
                          [index (in-naturals prefix)]
                          #:break (not ok?))
-                (define ctx* (with-path index
-                               (validate/schema ok item items)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann index) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
-
+                (~>> (validate/schema ok item items)
+                     (with-path index)
+                     ((ctx->ok?/ann/err ann err index)))))]))
+       
        (define (reason/array-content-error less? which)
          (~> "the array contains ~a than ~a instance~a of the schema"
              (format
@@ -599,13 +592,13 @@
                       
                         ([(item index) (in-indexed (in-list value))]
                          #:break (< max-contains count))
-                (define ctx* (with-path index
-                               (validate/schema ok item contains)))
-                (cond
-                  [(not (validation-ctx-ok? ctx*))
-                   (values ann count)]
-                  [else
-                   (values (set-add ann index) (+ count 1))])))]))
+                (~> (validate/schema ok item contains)
+                    (with-path index _)
+                    (match
+                      [(validation-ctx #t _ _)
+                       (values (set-add ann index) (+ count 1))]
+                      [_
+                       (values ann count)]))))]))
        
        (define (array/check-unique ctx)
          (cond
@@ -630,21 +623,14 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([(item index) (in-indexed (in-list value))]
                          #:break (not ok?)
                          #:unless (set-member? ann index))             
-                (define ctx* (with-path index
-                               (validate/schema ok item unevaluated-items)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann index) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
+                (~>> (validate/schema ok item unevaluated-items)
+                     (with-path index)
+                     ((ctx->ok?/ann/err ann err index)))))]))
        
        (~>> ctx
             (array/check-size)
@@ -738,19 +724,17 @@
               (for/fold ([ok? #t]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([(prop schema) (in-immutable-hash dependent-schemas)]
                          #:break (not ok?)
                          #:when (hash-has-key? value prop))
-                (define ctx* (validate/schema ok value schema))
-                (cond
-                  [(validation-ctx-ok? ctx*) (values ok? err)]
-                  [else
-                   (values #f (append err (validation-ctx-errors ctx*)))])))]))
+                (~> (validate/schema ok value schema)
+                    (match
+                      [(validation-ctx #f _ err*)
+                       (values #f (append err err*))]
+                      [_
+                       (values ok? err)]))))]))
        
        (define (object/check-properties ctx)
          (cond
@@ -761,22 +745,16 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
 
                         ([(prop schema) (in-immutable-hash props)]
                          #:break (not ok?)
                          #:when (hash-has-key? value prop))
-                (define ctx* (with-path prop
-                               (validate/schema ok (hash-ref value prop) schema)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann prop) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
-
+                (~>> (hash-ref value prop)
+                     (validate/schema ok _ schema)
+                     (with-path prop)
+                     ((ctx->ok?/ann/err ann err prop)))))]))
+       
        (define rx-lookup (pattern-property-lookup pattern-props))
        (define (object/check-pattern-properties ctx)
          (cond
@@ -787,10 +765,7 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?))
@@ -798,13 +773,9 @@
                 (cond
                   [(undefined? schema) (values ok? ann err)]
                   [else
-                   (define ctx* (with-path prop
-                                  (validate/schema ok u schema)))
-                   (cond
-                     [(validation-ctx-ok? ctx*)
-                      (values ok? (set-add ann prop) err)]
-                     [else
-                      (values #f ann (append err (validation-ctx-errors ctx*)))])])))]))
+                   (~>> (validate/schema ok u schema)
+                        (with-path prop)
+                        ((ctx->ok?/ann/err ann err prop)))])))]))
 
        (define (object/check-additional-properties ctx)
          (cond
@@ -816,23 +787,16 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?)
                          #:when (and (not (hash-has-key? props prop))
                                      (undefined? (rx-lookup prop))))
-                (define ctx* (with-path prop
-                               (validate/schema ok u additional-props)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann prop) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
-
+                (~>> (validate/schema ok u additional-props)
+                     (with-path prop)
+                     ((ctx->ok?/ann/err ann err prop)))))]))
+       
        (define (object/check-unevaluated-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -843,22 +807,15 @@
                          [ann (validation-ctx-annotations ctx)]
                          [err null]
                          #:result
-                         (cond
-                           [ok? (validation-ctx #t ann null)]
-                           [else
-                            (validation-ctx #f empty-set err)]))
+                         (prepare-ctx ok? ann err))
                         
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?)
                          #:unless (set-member? ann prop))
-                (define ctx* (with-path prop
-                               (validate/schema ok u unevaluated-props)))
-                (cond
-                  [(validation-ctx-ok? ctx*)
-                   (values ok? (set-add ann prop) err)]
-                  [else
-                   (values #f ann (append err (validation-ctx-errors ctx*)))])))]))
-     
+                (~>> (validate/schema ok u unevaluated-props)
+                     (with-path prop)
+                     ((ctx->ok?/ann/err ann err prop)))))]))
+       
        (~>> ctx
             (object/check-size)
             (object/check-required)
