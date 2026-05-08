@@ -157,7 +157,7 @@
                 (raise-tool-error
                  #:hints '("check the argument's schema again and retry")
                  #:data data
-                 "invalid argument in tool '~a':~nargument '~a' expected type ~a, received: ~a"
+                 "invalid argument in tool '~a':~nargument '~a' expected type: ~a~nreceived: ~a"
                  name label
                  (jsexpr->string type)
                  (jsexpr->string value))))])

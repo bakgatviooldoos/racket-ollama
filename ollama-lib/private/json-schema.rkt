@@ -47,8 +47,8 @@
   ;; instead of json-options (extend-client-endpoints)
   (define (json-&opt
            #:default [default undefined]
-           #:null? [nullable? (json-null? default)]
-           json &key v [app values])
+           #:nullable? [nullable? (json-null? default)]
+           json &lens v [app values])
     (define u (if (undefined? v) default v))
     (cond
       [(undefined? u) json]
@@ -57,7 +57,7 @@
         (json-null? u))
        json]
       [else
-       (&key json (app u))]))
+       (&lens json (app u))]))
   
   (define &type (&opt-hash-ref 'type))
   
@@ -164,12 +164,12 @@
         (validation-ctx ok? ann null)
         (validation-ctx #f empty-set err)))
 
-  (define (ctx->ok?/ann/err ann err data)
+  (define (ctx->ok?/ann/err ann err key)
     (match-lambda
       [(validation-ctx #f _ err*)
        (values #f ann (append err err*))]
       [_
-       (values #t (set-add ann data) err)]))
+       (values #t (set-add ann key) err)]))
 
   (define-syntax-rule
     (with-path path . body)
@@ -181,6 +181,13 @@
     (parameterize ([current-scope (cons scope (current-scope))])
       . body))
 
+  (define (reason/tally-error msg less? count either suffix)
+    (format
+     msg
+     (if less? (car either) (cdr either))
+     count
+     (if (= 1 count) (car suffix) (cdr suffix))))
+  
   (define schema/check-literal
     (match-lambda**
       [{ctx _value (or #t (hash*))} ctx]
@@ -210,15 +217,16 @@
                   [err null]
                   #:result
                   (validation-ctx ok? empty-set (if ok? null err)))
+                 
                  ([type (in-list types)]
                   #:break ok?)
-         (~> (hasheq 'type type)
-             (schema/check-type ctx value _)
-             (match
-               [(validation-ctx #f _ err*)
-                (values ok? (append err err*))]
-               [_
-                (values #t err)])))]
+         (~>> (hasheq 'type type)
+              (schema/check-type ctx value)
+              (match _
+                [(validation-ctx #f _ err*)
+                 (values ok? (append err err*))]
+                [_
+                 (values #t err)])))]
       
       [{ctx value (hash* ['type type])}
        (define type-error (make-error value))
@@ -297,13 +305,10 @@
        (define string-error (make-error value))
        
        (define length (string-length value))
-
+       
        (define (reason/string-length-error less? which)
          (~> "the string has ~a than ~a character~a"
-             (format
-              (if less? "less" "more")
-              which
-              (if (= 1 which) "" "s"))))
+             (reason/tally-error less? which '("less" . "more") '("" . "s"))))
        
        (define (string/check-length ctx)
          (cond
@@ -357,8 +362,7 @@
       [{(? validation-ctx-ok? ctx)
         value
         (hash* ['not invalid])}
-       
-       (define ctx* (validate/schema ok value invalid))
+       (define ctx* (validate-schema value invalid))
        (cond
          [(not (validation-ctx-ok? ctx*)) ctx]
          [else
@@ -393,16 +397,15 @@
         (hash* ['if test]
                ['then then #:default #t]
                ['else else #:default undefined])}
-       
-       (define ctx* (validate/schema ctx value test))
-       (~>> (cond
-              [(validation-ctx-ok? ctx*)
-               (~>> (validate/schema ctx* value then)
-                    (with-scope 'then))]
-              [(undefined? else) ctx]
-              [(~>> (validate/schema ctx value else)
-                    (with-scope 'else))])
-            (with-scope 'if))]
+       (define ctx* (validate-ctx/schema ctx value test))
+       (with-scope 'if
+         (cond
+           [(validation-ctx-ok? ctx*)
+            (~>> (validate-ctx/schema ctx* value then)
+                 (with-scope 'then))]
+           [(undefined? else) ctx]
+           [(~>> (validate-ctx/schema ctx value else)
+                 (with-scope 'else))]))]
       
       [{ctx _value _schema} ctx]))
   
@@ -420,7 +423,7 @@
                    
                    ([(schema index) (in-indexed (in-list all))]
                     #:break (not ok?))
-           (~>> (validate/schema ok value schema)
+           (~>> (validate-schema value schema)
                 (with-scope index)
                 (match _
                   [(validation-ctx #t ann* _)
@@ -444,7 +447,7 @@
                    
                    ([(schema index) (in-indexed (in-list any))]
                     #:break ok?)
-           (~>> (validate/schema ok value schema)
+           (~>> (validate-schema value schema)
                 (with-scope index)
                 (match _
                   [(validation-ctx #t ann* _)
@@ -468,7 +471,7 @@
                    
                    ([(schema index) (in-indexed (in-list one))]
                     #:break (< 1 count))
-           (~>> (validate/schema ok value schema)
+           (~>> (validate-schema value schema)
                 (with-scope index)
                 (match _
                   [(validation-ctx #t ann* _)
@@ -499,10 +502,7 @@
        
        (define (reason/array-length-error less? which)
          (~> "the array has ~a than ~a item~a"
-             (format
-              (if less? "less" "more")
-              which
-              (if (= 1 which) "" "s"))))
+             (reason/tally-error less? which '("less" . "more") '("" . "s"))))
 
        (define (array/check-size ctx)
          (cond
@@ -537,10 +537,10 @@
                         ([schema (in-list prefix-items)]
                          [(item index) (in-indexed (in-list value))]
                          #:break (not ok?))
-                (~>> (validate/schema ok item schema)
-                     (with-path index)
-                     ((ctx->ok?/ann/err ann err index)))))]))
+                (~> (validate-member schema)
+                    (_ ann err index item))))]))
 
+       (define validate-items (validate-member items))
        (define (array/check-items ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -556,16 +556,11 @@
                         ([item (in-list (drop value prefix))]
                          [index (in-naturals prefix)]
                          #:break (not ok?))
-                (~>> (validate/schema ok item items)
-                     (with-path index)
-                     ((ctx->ok?/ann/err ann err index)))))]))
+                (validate-items ann err index item)))]))
        
        (define (reason/array-content-error less? which)
          (~> "the array contains ~a than ~a instance~a of the schema"
-             (format
-              (if less? "less" "more")
-              which
-              (if (= 1 which) "" "s"))))
+             (reason/tally-error less? which '("less" . "more") '("" . "s"))))
 
        (define (array/check-contains ctx)
          (cond
@@ -573,32 +568,33 @@
            [(undefined? contains) ctx]
            [else
             (with-scope 'contains
-              (for/fold ([ann (validation-ctx-annotations ctx)]
-                         [count 0]
+              (for/fold ([count 0]
+                         [ann (validation-ctx-annotations ctx)]
                          #:result
                          (cond
                            [(<= min-contains count max-contains)
                             (validation-ctx #t ann null)]
                            [(< count min-contains)
                             (~>> (reason/array-content-error #;less? #t min-contains)
-                                 (array-error (hasheq 'contains contains 'minContains min-contains))
+                                 (array-error (hasheq 'contains contains
+                                                      'minContains min-contains))
                                  (invalidate-ctx ctx)
                                  (with-scope 'minContains))]
                            [else
                             (~>> (reason/array-content-error #;less? #f max-contains)
-                                 (array-error (hasheq 'contains contains 'maxContains max-contains))
+                                 (array-error (hasheq 'contains contains
+                                                      'maxContains max-contains))
                                  (invalidate-ctx ctx)
                                  (with-scope 'maxContains))]))
-                      
+                        
                         ([(item index) (in-indexed (in-list value))]
                          #:break (< max-contains count))
-                (~> (validate/schema ok item contains)
-                    (with-path index _)
-                    (match
-                      [(validation-ctx #t _ _)
-                       (values (set-add ann index) (+ count 1))]
-                      [_
-                       (values ann count)]))))]))
+                     (cond
+                       [(~> (validate-schema item contains)
+                            (validation-ctx-ok?))
+                        (values (+ count 1) (set-add ann index))]
+                       [else
+                        (values count ann)])))]))
        
        (define (array/check-unique ctx)
          (cond
@@ -606,13 +602,16 @@
            [(not unique-items?) ctx]
            [else
             (cond
-              [(undefined? (check-duplicates value #:default undefined)) ctx]
+              [(~> (check-duplicates value #:default undefined)
+                   (undefined?))
+               ctx]
               [else
                (~>> "the array contains at least one duplicate value"
                     (array-error (hasheq 'uniqueItems #t))
                     (invalidate-ctx ctx)
                     (with-scope 'uniqueItems))])]))
-       
+
+       (define validate-unevaluated-items (validate-member unevaluated-items))
        (define (array/check-unevaluated-items ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -627,10 +626,8 @@
                         
                         ([(item index) (in-indexed (in-list value))]
                          #:break (not ok?)
-                         #:unless (set-member? ann index))             
-                (~>> (validate/schema ok item unevaluated-items)
-                     (with-path index)
-                     ((ctx->ok?/ann/err ann err index)))))]))
+                         #:unless (set-member? ann index))
+                (validate-unevaluated-items ann err index item)))]))
        
        (~>> ctx
             (array/check-size)
@@ -664,10 +661,7 @@
 
        (define (reason/object-size-error less? which)
          (~> "the object has ~a than ~a propert~a"
-             (format
-              (if less? "less" "more")
-              which
-              (if (= 1 which) "y" "ies"))))
+             (reason/tally-error less? which '("less" . "more") '("y" . "ies"))))
        
        (define (object/check-size ctx)
          (cond
@@ -729,7 +723,7 @@
                         ([(prop schema) (in-immutable-hash dependent-schemas)]
                          #:break (not ok?)
                          #:when (hash-has-key? value prop))
-                (~> (validate/schema ok value schema)
+                (~> (validate-schema value schema)
                     (match
                       [(validation-ctx #f _ err*)
                        (values #f (append err err*))]
@@ -750,10 +744,8 @@
                         ([(prop schema) (in-immutable-hash props)]
                          #:break (not ok?)
                          #:when (hash-has-key? value prop))
-                (~>> (hash-ref value prop)
-                     (validate/schema ok _ schema)
-                     (with-path prop)
-                     ((ctx->ok?/ann/err ann err prop)))))]))
+                (~> (validate-member schema)
+                    (_ ann err prop (hash-ref value prop)))))]))
        
        (define rx-lookup (pattern-property-lookup pattern-props))
        (define (object/check-pattern-properties ctx)
@@ -773,10 +765,10 @@
                 (cond
                   [(undefined? schema) (values ok? ann err)]
                   [else
-                   (~>> (validate/schema ok u schema)
-                        (with-path prop)
-                        ((ctx->ok?/ann/err ann err prop)))])))]))
+                   (~> (validate-member schema)
+                       (_ ann err prop u))])))]))
 
+       (define validate-additional-props (validate-member additional-props))
        (define (object/check-additional-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -793,10 +785,9 @@
                          #:break (not ok?)
                          #:when (and (not (hash-has-key? props prop))
                                      (undefined? (rx-lookup prop))))
-                (~>> (validate/schema ok u additional-props)
-                     (with-path prop)
-                     ((ctx->ok?/ann/err ann err prop)))))]))
-       
+                (validate-additional-props ann err prop u)))]))
+
+       (define validate-unevaluated-props (validate-member unevaluated-props))
        (define (object/check-unevaluated-properties ctx)
          (cond
            [(not (validation-ctx-ok? ctx)) ctx]
@@ -812,9 +803,7 @@
                         ([(prop u) (in-immutable-hash value)]
                          #:break (not ok?)
                          #:unless (set-member? ann prop))
-                (~>> (validate/schema ok u unevaluated-props)
-                     (with-path prop)
-                     ((ctx->ok?/ann/err ann err prop)))))]))
+                (validate-unevaluated-props ann err prop u)))]))
        
        (~>> ctx
             (object/check-size)
@@ -829,7 +818,7 @@
       
       [{ctx _value _schema} ctx]))
 
-  (define (validate/schema ctx value schema)
+  (define (validate-ctx/schema ctx value schema)
     (~> ctx
         ; check simple constraints
         (schema/check-literal value schema)
@@ -845,7 +834,15 @@
         (schema/check-one-of  value schema)
         ; use propagated annotations
         (schema/check-array   value schema)
-        (schema/check-object  value schema))))
+        (schema/check-object  value schema)))
+
+  (define ((validate-member schema) ann err key value)
+    (~>> (validate-schema value schema)
+         (with-path key)
+         ((ctx->ok?/ann/err ann err key))))
+
+  (define (validate-schema value schema)
+    (validate-ctx/schema ok value schema)))
 
 (require 'schema-utils)
 
@@ -963,13 +960,11 @@
       (json-&opt &unevaluated-properties unevaluated-props)))
 
 (define (json/schema-errors? value schema)
-  (define ctx (parameterize ([current-path null]
-                             [current-scope null])
-                (validate/schema ok value schema)))
-  (cond
-    [(validation-ctx-ok? ctx) #f]
-    [else
-     (validation-ctx-errors ctx)]))
+  (define ctx (parameterize ([current-scope null]
+                             [current-path null])
+                (validate-schema value schema)))
+  (~> (validation-ctx-ok? ctx)
+      (if #f (validation-ctx-errors ctx))))
 
 (define schema₁
   #hasheq((type . "object")
@@ -1028,3 +1023,8 @@
 (json/schema-errors?
  (hasheq 'hello "hello")
  (Object* `([hello . ,(Just "world")])))
+
+(json/schema-errors?
+ "this string is too long"
+ (with-String Some
+   #:max-length 7))
